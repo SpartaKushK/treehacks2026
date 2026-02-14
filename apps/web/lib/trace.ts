@@ -42,19 +42,19 @@ export async function finalizeTrace(traceId: string) {
   const trace = liveTraces.get(traceId);
   if (!trace) return null;
 
-  // Embed child call references into steps JSON
-  const data: Record<string, unknown> = {
+  // Persist steps and child_calls so getTrace from DB returns full graph
+  const payload: { steps: TraceStep[]; child_calls?: { handle: string; capability: string; childTraceId: string }[] } = {
     steps: trace.steps,
   };
   if (trace.childCalls && trace.childCalls.length > 0) {
-    data.child_calls = trace.childCalls;
+    payload.child_calls = trace.childCalls;
   }
 
   const record = await prisma.trace.create({
     data: {
       id: traceId,
       provider: trace.provider,
-      stepsJson: JSON.stringify(trace.steps),
+      stepsJson: JSON.stringify(payload),
     },
   });
 
@@ -74,13 +74,19 @@ export async function getTrace(traceId: string) {
       child_calls: live.childCalls || [],
     };
   }
-  // Then DB
+  // Then DB (stepsJson may be legacy array or { steps, child_calls })
   const record = await prisma.trace.findUnique({ where: { id: traceId } });
   if (!record) return null;
+  const parsed = JSON.parse(record.stepsJson) as
+    | TraceStep[]
+    | { steps: TraceStep[]; child_calls?: { handle: string; capability: string; childTraceId: string }[] };
+  const steps = Array.isArray(parsed) ? parsed : parsed.steps;
+  const child_calls = Array.isArray(parsed) ? [] : (parsed.child_calls ?? []);
   return {
     id: record.id,
     createdAt: record.createdAt.toISOString(),
     provider: record.provider,
-    steps: JSON.parse(record.stepsJson) as TraceStep[],
+    steps,
+    child_calls,
   };
 }

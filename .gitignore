@@ -19,9 +19,30 @@ build/
 .env.production
 .clerk/
 
+<<<<<<< HEAD
 # Database (local SQLite)
 *.db
 *.db-journal
+=======
+# Clerk Keyless mode (contains secret key)
+.clerk
+
+__pycache__
+*.py[cod]
+*.pyo
+.Python
+venv
+.venv
+
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+.DS_Store
+Thumbs.db
+>>>>>>> 085a655 (reuse hex, commit doc)
 
 # Logs and debug
 *.log

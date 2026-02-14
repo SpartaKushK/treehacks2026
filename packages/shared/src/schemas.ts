@@ -30,7 +30,12 @@ export const ScheduleProposeInputSchema = z.object({
   title: z.string(),
   durationMins: z.number().int().positive(),
   timeWindow: TimeSlotSchema,
-  locationPrefs: z.array(z.string()),
+  locationPrefs: z.array(z.string()).default([]),
+});
+
+export const ScheduleCounterInputSchema = z.object({
+  proposedSlots: z.array(TimeSlotSchema),
+  durationMins: z.number().int().positive().optional(),
 });
 
 export const ScheduleConfirmInputSchema = z.object({

@@ -1,6 +1,11 @@
 import { prisma } from "./store";
 import { v4 as uuid } from "uuid";
 import type { HealthSummaryOutput } from "@people/shared";
+import {
+  ScheduleProposeInputSchema,
+  ScheduleCounterInputSchema,
+  ScheduleConfirmInputSchema,
+} from "@people/shared";
 import { handleHealthAnomalyAlert } from "./capabilities/healthAnomalyAlert";
 import { handleTriageIntakeAndSchedule } from "./capabilities/triageIntakeAndSchedule";
 
@@ -38,14 +43,14 @@ async function handleSchedulePropose(
   handle: string,
   input: unknown
 ) {
+  const parsed = ScheduleProposeInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, data: { error: "invalid_input", details: parsed.error.flatten() } };
+  }
+  const inp = parsed.data;
+
   const human = await prisma.human.findUnique({ where: { handle } });
   if (!human) return { ok: false, data: { error: "user_not_found" } };
-
-  const inp = input as {
-    title: string;
-    durationMins: number;
-    timeWindow: { start: string; end: string };
-  };
 
   // Get busy slots
   const events = await prisma.calendarEvent.findMany({
@@ -73,13 +78,14 @@ async function handleScheduleCounter(
   handle: string,
   input: unknown
 ) {
+  const parsed = ScheduleCounterInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, data: { error: "invalid_input", details: parsed.error.flatten() } };
+  }
+  const inp = parsed.data;
+
   const human = await prisma.human.findUnique({ where: { handle } });
   if (!human) return { ok: false, data: { error: "user_not_found" } };
-
-  const inp = input as {
-    proposedSlots: { start: string; end: string }[];
-    durationMins: number;
-  };
 
   const events = await prisma.calendarEvent.findMany({
     where: { humanId: human.id },
@@ -125,11 +131,11 @@ async function handleScheduleCounter(
 }
 
 async function handleScheduleConfirm(input: unknown) {
-  const inp = input as {
-    chosenSlot: { start: string; end: string };
-    title: string;
-    participants: string[];
-  };
+  const parsed = ScheduleConfirmInputSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, data: { error: "invalid_input", details: parsed.error.flatten() } };
+  }
+  const inp = parsed.data;
 
   const booking = await prisma.booking.create({
     data: {
