@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
-import { prisma } from "@/lib/store";
+import { prisma, setPrivateKey } from "@/lib/store";
 import { ensureSeed } from "@/lib/ensureSeed";
+import { toHex } from "@/lib/crypto";
 import nacl from "tweetnacl";
-import { setPrivateKey } from "@/lib/store";
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 /** GET /api/agents — list current user's agents + unclaimed demo agents */
 export async function GET() {
