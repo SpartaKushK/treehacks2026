@@ -13,11 +13,22 @@ model Human {
   displayName  String
   publicKey    String
   endpointUrl  String
+  clerkUserId  String?
   createdAt    DateTime      @default(now())
-  capabilities Capability[]
-  policies     Policy[]
-  calendar     CalendarEvent[]
+
+  // Agent configuration
+  personaPrompt        String?
+  llmProvider          String   @default("claude")
+  anomalyThresholdJson String   @default("{\"urgent\":85,\"soon\":70}")
+
+  // Google Calendar OAuth tokens (JSON blob)
+  googleCalendarTokens String?
+
+  capabilities  Capability[]
+  policies      Policy[]
+  calendar      CalendarEvent[]
   healthMetrics HealthMetric[]
+  anomalyAlerts AnomalyAlert[]
 }
 
 model Capability {
@@ -42,12 +53,14 @@ model Policy {
 }
 
 model CalendarEvent {
-  id      String @id @default(uuid())
-  humanId String
-  startTs String
-  endTs   String
-  title   String
-  human   Human  @relation(fields: [humanId], references: [id])
+  id            String  @id @default(uuid())
+  humanId       String
+  startTs       String
+  endTs         String
+  title         String
+  googleEventId String?
+  source        String  @default("local")
+  human         Human   @relation(fields: [humanId], references: [id])
 }
 
 model HealthMetric {
@@ -76,4 +89,19 @@ model Trace {
   createdAt DateTime @default(now())
   provider  String
   stepsJson String   @default("[]")
+}
+
+model AnomalyAlert {
+  id                String    @id @default(uuid())
+  humanId           String
+  traceId           String?
+  severity          String
+  anomalyScore      Int
+  flagsJson         String    @default("[]")
+  decisionJson      String    @default("{}")
+  triageOutcomeJson String?
+  status            String    @default("active")
+  createdAt         DateTime  @default(now())
+  resolvedAt        DateTime?
+  human             Human     @relation(fields: [humanId], references: [id])
 }

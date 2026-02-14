@@ -201,6 +201,20 @@ export async function GET(req: NextRequest) {
 
     await finalizeTrace(traceId);
 
+    // Persist anomaly alert for history
+    await prisma.anomalyAlert.create({
+      data: {
+        humanId: pari.id,
+        traceId,
+        severity: decision.urgency,
+        anomalyScore: anomaly.anomaly_score,
+        flagsJson: JSON.stringify(anomaly.flags),
+        decisionJson: JSON.stringify(decision),
+        triageOutcomeJson: triageOutcome ? JSON.stringify(triageOutcome) : null,
+        status: "active",
+      },
+    });
+
     return NextResponse.json({
       traceId,
       severity,
