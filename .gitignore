@@ -1,33 +1,14 @@
-# Environment & secrets
+node_modules
+.next
+*.db
 .env
 .env.local
 .env.*.local
-
-# Python
+dist
+.turbo
 __pycache__/
 *.py[cod]
-*$py.class
-*.egg-info/
-dist/
-build/
-*.egg
-venv/
-.venv/
-
-# Node
-node_modules/
-.next/
-out/
-
-# Generated files
-agents/generated_pages/
-
-# IDE
 .vscode/
 .idea/
 *.swp
-*.swo
 .DS_Store
-
-# Modal
-.modal/

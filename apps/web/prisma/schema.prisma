@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Human {
+  id           String        @id @default(uuid())
+  handle       String        @unique
+  displayName  String
+  publicKey    String
+  endpointUrl  String
+  createdAt    DateTime      @default(now())
+  capabilities Capability[]
+  policies     Policy[]
+  calendar     CalendarEvent[]
+  healthMetrics HealthMetric[]
+}
+
+model Capability {
+  id               String @id @default(uuid())
+  humanId          String
+  name             String
+  description      String
+  inputSchemaJson  String @default("{}")
+  outputSchemaJson String @default("{}")
+  human            Human  @relation(fields: [humanId], references: [id])
+}
+
+model Policy {
+  id                String  @id @default(uuid())
+  humanId           String
+  capabilityName    String
+  allowedCallersJson String @default("[\"*\"]")
+  requiredScopesJson String @default("[]")
+  paymentRequired   Boolean @default(false)
+  priceCents        Int     @default(0)
+  human             Human   @relation(fields: [humanId], references: [id])
+}
+
+model CalendarEvent {
+  id      String @id @default(uuid())
+  humanId String
+  startTs String
+  endTs   String
+  title   String
+  human   Human  @relation(fields: [humanId], references: [id])
+}
+
+model HealthMetric {
+  id            String  @id @default(uuid())
+  humanId       String
+  date          String
+  sleepHours    Float
+  steps         Int
+  medAdherence  Boolean
+  symptomScore  Float
+  human         Human   @relation(fields: [humanId], references: [id])
+}
+
+model Booking {
+  id         String   @id @default(uuid())
+  fromHandle String
+  toHandle   String
+  startTs    String
+  endTs      String
+  title      String
+  createdAt  DateTime @default(now())
+}
+
+model Trace {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now())
+  provider  String
+  stepsJson String   @default("[]")
+}
