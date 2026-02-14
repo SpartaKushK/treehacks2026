@@ -1,11 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/store";
-import { setPrivateKey } from "@/lib/store";
+import { prisma, setPrivateKey } from "@/lib/store";
+import { toHex } from "@/lib/crypto";
 import nacl from "tweetnacl";
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, "0")).join("");
-}
 
 /**
  * Clerk webhook handler — called when a new user is created.

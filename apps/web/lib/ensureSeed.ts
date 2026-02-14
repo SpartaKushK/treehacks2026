@@ -1,13 +1,8 @@
 import { prisma, setPrivateKey } from "./store";
+import { toHex } from "./crypto";
 import nacl from "tweetnacl";
 
 let seeded = false;
-
-function toHex(bytes: Uint8Array): string {
-  return Array.from(bytes)
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
 
 /**
  * Ensure the database is seeded. Idempotent — safe to call on every request.
