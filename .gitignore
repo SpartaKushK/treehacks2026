@@ -1,47 +1,63 @@
-node_modules
-.pnpm-store
+# Dependencies
+node_modules/
+.pnpm-store/
 
-.next
-out
-dist
-build
-.turbo
+# Next.js
+.next/
+out/
 
-*.db
+# Build / output
+dist/
+build/
+.turbo/
+
+# Env and secrets
 .env
 .env.local
 .env.*.local
 .env.development
 .env.production
+.clerk/
 
-__pycache__
-*.py[cod]
-*.pyo
-.Python
-venv
-.venv
+# Database (local SQLite)
+*.db
+*.db-journal
 
-.vscode
-.idea
-*.swp
-*.swo
-*~
-
-.DS_Store
-Thumbs.db
-
+# Logs and debug
 *.log
 npm-debug.log*
 pnpm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-coverage
-.nyc_output
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE (optional: remove .vscode/ if you commit shared settings)
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__
+*.py[cod]
+*.pyo
+.Python
+venv/
+.venv/
+
+# Coverage
+coverage/
+.nyc_output/
 *.lcov
 
-.vercel
-.netlify
+# Deploy
+.vercel/
+.netlify/
 
-.cache
+# Cache
+.cache/
 *.tsbuildinfo
