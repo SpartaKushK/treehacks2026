@@ -67,10 +67,90 @@ Without API keys, both planners fall back to deterministic logic — the full de
 
 Note: SQLite runs locally; for production, switch the Prisma datasource to Postgres.
 
+## Secretary Agent (Trigger Endpoint)
+
+The Secretary Agent is an LLM-powered orchestrator that receives incoming health triggers and autonomously decides which sub-tools to invoke. It uses OpenAI/Anthropic function-calling to chain tools as needed.
+
+### `POST /api/trigger`
+
+Send health data and the secretary will analyze it, escalate if needed, and return a final decision.
+
+**Request body:**
+```json
+{
+  "trigger_type": "health_anomaly",
+  "provider": "openai",
+  "description": "Wearable anomaly alert for pari",
+  "data": {
+    "user_handle": "pari",
+    "date": "2026-02-14",
+    "baseline_window_days": 28,
+    "metrics": { "sleep_hours": 4.2, "resting_hr_bpm": 88, "steps": 2100, "hrv_ms": 22 },
+    "baseline": { "sleep_mean": 7.1, "sleep_std": 0.6, "rhr_mean": 62, "rhr_std": 3 },
+    "flags": ["SLEEP_DROP", "RHR_SPIKE", "STEPS_DROP", "HRV_DROP"],
+    "anomaly_score": 92,
+    "freeform_context": "Feeling very tired and heart racing since yesterday."
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "traceId": "uuid",
+  "finalDecision": "The secretary's summary of actions taken and outcome...",
+  "toolCallLog": [
+    { "tool": "analyze_anomaly", "args": { ... }, "result": { ... } },
+    { "tool": "triage_patient", "args": { ... }, "result": { ... } }
+  ],
+  "provider": "openai",
+  "turns": 3
+}
+```
+
+**Available `trigger_type` values:** `health_anomaly`, `health_summary`, `schedule`, `custom`
+
+**Available sub-tools the secretary can invoke:**
+- `analyze_anomaly` — evaluates health anomaly severity and urgency
+- `triage_patient` — sends triage request to doctor's receptionist, books appointment
+- `get_health_summary` — retrieves 30-day health trends
+- `schedule_appointment` — finds available appointment slots
+
+### Example curl commands
+
+```bash
+# Severe anomaly — secretary will analyze and escalate to triage
+curl -X POST http://localhost:3000/api/trigger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "trigger_type": "health_anomaly",
+    "provider": "openai",
+    "data": {
+      "user_handle": "pari",
+      "date": "2026-02-14",
+      "baseline_window_days": 28,
+      "metrics": { "sleep_hours": 4.2, "resting_hr_bpm": 88, "steps": 2100 },
+      "baseline": { "sleep_mean": 7.1, "rhr_mean": 62, "steps_mean": 7500 },
+      "flags": ["SLEEP_DROP", "RHR_SPIKE"],
+      "anomaly_score": 92
+    }
+  }'
+
+# Health summary request
+curl -X POST http://localhost:3000/api/trigger \
+  -H "Content-Type: application/json" \
+  -d '{
+    "trigger_type": "health_summary",
+    "provider": "openai",
+    "data": { "patient_handle": "pari", "requested_by": "dr_smith" }
+  }'
+```
+
 ## API Surface
 
 | Endpoint | Method | Description |
 |---|---|---|
+| `/api/trigger` | POST | Secretary Agent — route health triggers to sub-tools |
 | `/api/registry/register` | POST | Register a human agent |
 | `/api/registry/lookup/:handle` | GET | Lookup agent by handle |
 | `/api/u/:handle/caps` | GET | List capabilities + policies |
@@ -85,9 +165,14 @@ Note: SQLite runs locally; for production, switch the Prisma datasource to Postg
 ```
 /
   apps/web/          Next.js (App Router) — UI + API routes
-    app/api/         All API endpoints
+    app/api/         All API endpoints (including /api/trigger)
     components/      TraceViewer, ProviderToggle, JsonView
     lib/             Core logic (crypto, policy, trace, seed, people)
+      secretary/     Secretary Agent (LLM orchestrator with function-calling)
+        agent.ts     Agent loop (OpenAI + Anthropic tool-use support)
+        tools.ts     Tool definitions wrapping capability handlers
+        prompts.ts   System prompt for the secretary
+      capabilities/  Sub-tool handlers (anomaly, triage, scheduling, health)
     prisma/          Schema + SQLite
   packages/shared/   Types, Zod schemas, LLM abstraction, canonical JSON
 ```

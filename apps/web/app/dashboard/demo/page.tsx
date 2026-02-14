@@ -17,47 +17,12 @@ interface ScheduleResult {
   chosenSlot: { start: string; end: string };
 }
 
-interface HealthResult {
+interface SecretaryResult {
   traceId: string;
-  healthSummary: {
-    rangeDays: number;
-    sleep: { avg: number; trend: string; flags: string[] };
-    activity: { avgSteps: number; trend: string };
-    medication: { adherencePct: number; missedDays: number };
-    symptoms: { avgScore: number; spikes: string[] };
-    notes: string[];
-    patientFriendlyText?: string;
-  };
+  finalDecision: string;
+  toolCallLog: { tool: string; args: Record<string, unknown>; result: Record<string, unknown> }[];
   provider: string;
-}
-
-interface PaymentError {
-  error: string;
-  checkoutUrl: string;
-  priceCents: number;
-  traceId: string;
-}
-
-interface AnomalyResult {
-  traceId: string;
-  severity: string;
-  provider: string;
-  decision: {
-    summary_explanation: string;
-    questions: string[];
-    recommended_next_step: string;
-    should_contact_clinic: boolean;
-    urgency: string;
-    clinic_message?: string;
-  };
-  triage_outcome?: {
-    intake_questions_asked: string[];
-    intake_answers: Record<string, string>;
-    urgency: string;
-    proposed_slots: { start: string; end: string }[];
-    booking_confirmation: { start: string; end: string; method: string };
-    escalation_triggered: boolean;
-  };
+  turns: number;
 }
 
 export default function DemoPage() {
@@ -71,19 +36,17 @@ export default function DemoPage() {
   const [schedError, setSchedError] = useState<string | null>(null);
 
   // Health state
-  const [healthProvider, setHealthProvider] = useState<Provider>("claude");
+  const [healthProvider, setHealthProvider] = useState<Provider>("openai");
   const [healthLoading, setHealthLoading] = useState(false);
-  const [healthResult, setHealthResult] = useState<HealthResult | null>(null);
+  const [healthResult, setHealthResult] = useState<SecretaryResult | null>(null);
   const [healthTrace, setHealthTrace] = useState<TraceStep[]>([]);
   const [healthError, setHealthError] = useState<string | null>(null);
-  const [paymentGate, setPaymentGate] = useState<PaymentError | null>(null);
-  const [premiumScope, setPremiumScope] = useState(true);
 
   // Anomaly state
-  const [anomProvider, setAnomProvider] = useState<Provider>("claude");
+  const [anomProvider, setAnomProvider] = useState<Provider>("openai");
   const [anomSeverity, setAnomSeverity] = useState<"mild" | "severe">("severe");
   const [anomLoading, setAnomLoading] = useState(false);
-  const [anomResult, setAnomResult] = useState<AnomalyResult | null>(null);
+  const [anomResult, setAnomResult] = useState<SecretaryResult | null>(null);
   const [anomTrace, setAnomTrace] = useState<TraceStep[]>([]);
   const [anomError, setAnomError] = useState<string | null>(null);
 
@@ -125,28 +88,24 @@ export default function DemoPage() {
     setHealthResult(null);
     setHealthTrace([]);
     setHealthError(null);
-    setPaymentGate(null);
     try {
-      const res = await fetch(
-        `/api/demo/health?doctor=dr_smith&patient=pari&provider=${healthProvider}&premium=${premiumScope}`
-      );
+      const res = await fetch("/api/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "health_summary",
+          provider: healthProvider,
+          description: "Doctor requests Pari's 30-day health summary",
+          data: {
+            request_type: "health_summary",
+            patient_handle: "pari",
+            requested_by: "dr_smith",
+          },
+        }),
+      });
       const data = await res.json();
-      if (res.status === 402) {
-        setPaymentGate(data as PaymentError);
-        if (data.traceId) {
-          const traceRes = await fetch(`/api/demo/trace/${data.traceId}`);
-          const traceData = await traceRes.json();
-          setHealthTrace(traceData.steps || []);
-        }
-        return;
-      }
       if (!res.ok) {
         setHealthError(data.error || "Request failed");
-        if (data.traceId) {
-          const traceRes = await fetch(`/api/demo/trace/${data.traceId}`);
-          const traceData = await traceRes.json();
-          setHealthTrace(traceData.steps || []);
-        }
         return;
       }
       setHealthResult(data);
@@ -167,18 +126,44 @@ export default function DemoPage() {
     setAnomResult(null);
     setAnomTrace([]);
     setAnomError(null);
+
+    const today = new Date().toISOString().split("T")[0];
+    const anomalyData =
+      anomSeverity === "severe"
+        ? {
+            user_handle: "pari",
+            date: today,
+            baseline_window_days: 28,
+            metrics: { sleep_hours: 4.2, resting_hr_bpm: 88, steps: 2100, hrv_ms: 22 },
+            baseline: { sleep_mean: 7.1, sleep_std: 0.6, rhr_mean: 62, rhr_std: 3, steps_mean: 7500, steps_std: 1200 },
+            flags: ["SLEEP_DROP", "RHR_SPIKE", "STEPS_DROP", "HRV_DROP"],
+            anomaly_score: 92,
+            freeform_context: "Feeling very tired and heart racing since yesterday.",
+          }
+        : {
+            user_handle: "pari",
+            date: today,
+            baseline_window_days: 28,
+            metrics: { sleep_hours: 5.8, resting_hr_bpm: 68, steps: 5200 },
+            baseline: { sleep_mean: 7.1, sleep_std: 0.6, rhr_mean: 62, rhr_std: 3, steps_mean: 7500, steps_std: 1200 },
+            flags: ["SLEEP_DROP"],
+            anomaly_score: 55,
+          };
+
     try {
-      const res = await fetch(
-        `/api/demo/anomaly?severity=${anomSeverity}&provider=${anomProvider}`
-      );
+      const res = await fetch("/api/trigger", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: "health_anomaly",
+          provider: anomProvider,
+          description: `Wearable anomaly alert for pari (${anomSeverity}, score ${anomalyData.anomaly_score})`,
+          data: anomalyData,
+        }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setAnomError(data.error || "Request failed");
-        if (data.traceId) {
-          const traceRes = await fetch(`/api/demo/trace/${data.traceId}`);
-          const traceData = await traceRes.json();
-          setAnomTrace(traceData.steps || []);
-        }
         return;
       }
       setAnomResult(data);
@@ -247,44 +232,39 @@ export default function DemoPage() {
           )}
         </div>
 
-        {/* Healthcare Demo */}
+        {/* Healthcare Demo — via Secretary Agent */}
         <div className="card">
           <div className="section-header">
-            <h2>Healthcare Summary</h2>
+            <h2>Healthcare Summary (Secretary Agent)</h2>
             <ProviderToggle value={healthProvider} onChange={setHealthProvider} />
           </div>
           <div className="row" style={{ marginBottom: "1rem" }}>
             <button className="btn btn-primary" onClick={runHealthDemo} disabled={healthLoading}>
-              {healthLoading ? <><span className="spinner" /> Fetching...</> : "Doctor agent: fetch Pari health summary"}
+              {healthLoading ? <><span className="spinner" /> Secretary processing...</> : "Secretary: fetch Pari health summary"}
             </button>
-            <label style={{ display: "flex", alignItems: "center", gap: "0.375rem", fontSize: "0.8125rem", cursor: "pointer", color: "var(--text-dim)" }}>
-              <input type="checkbox" checked={premiumScope} onChange={(e) => setPremiumScope(e.target.checked)} style={{ accentColor: "var(--accent)" }} />
-              Premium scope (uncheck to trigger 402)
-            </label>
           </div>
           {healthError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.875rem" }}>Error: {healthError}</div>}
-          {paymentGate && (
-            <div className="payment-banner" style={{ marginBottom: "1rem" }}>
-              <span className="badge badge-yellow">402</span>
-              <div style={{ fontSize: "0.85rem" }}>
-                <strong>Payment required</strong> &mdash; ${(paymentGate.priceCents / 100).toFixed(2)}
-                <br />
-                <a href={paymentGate.checkoutUrl} target="_blank" rel="noreferrer" style={{ color: "var(--accent)", fontSize: "0.8rem" }}>Open checkout &rarr;</a>
-              </div>
-            </div>
-          )}
           {healthResult && (
             <div style={{ marginBottom: "1rem" }}>
               <div className="row" style={{ marginBottom: "0.75rem" }}>
-                <span className="badge badge-green">OK</span>
+                <span className="badge badge-green">COMPLETE</span>
                 <span className="badge badge-orange">{healthResult.provider}</span>
-                <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>{healthResult.healthSummary.rangeDays}-day summary</span>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>{healthResult.turns} turn(s), {healthResult.toolCallLog.length} tool call(s)</span>
               </div>
-              {healthResult.healthSummary.patientFriendlyText && <div className="friendly-text">{healthResult.healthSummary.patientFriendlyText}</div>}
-              <div style={{ marginTop: "1rem" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>RAW ANALYTICS</div>
-                <JsonView data={healthResult.healthSummary} maxHeight={300} />
-              </div>
+              <div className="friendly-text" style={{ marginBottom: "1rem", whiteSpace: "pre-wrap" }}>{healthResult.finalDecision}</div>
+              {healthResult.toolCallLog.length > 0 && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>TOOL CALLS</div>
+                  {healthResult.toolCallLog.map((tc, i) => (
+                    <div key={i} style={{ marginBottom: "0.5rem" }}>
+                      <div style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.25rem" }}>
+                        {i + 1}. {tc.tool}
+                      </div>
+                      <JsonView data={tc.result} maxHeight={200} />
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {healthTrace.length > 0 && (
@@ -296,10 +276,10 @@ export default function DemoPage() {
           )}
         </div>
 
-        {/* Anomaly Demo */}
+        {/* Anomaly Demo — via Secretary Agent */}
         <div className="card">
           <div className="section-header">
-            <h2>Health Anomaly &rarr; Doctor Receptionist</h2>
+            <h2>Health Anomaly &rarr; Secretary Agent</h2>
             <ProviderToggle value={anomProvider} onChange={setAnomProvider} />
           </div>
           <div className="row" style={{ marginBottom: "1rem" }}>
@@ -311,54 +291,40 @@ export default function DemoPage() {
               </select>
             </div>
             <button className="btn btn-primary" onClick={runAnomalyDemo} disabled={anomLoading}>
-              {anomLoading ? <><span className="spinner" /> Processing...</> : "Simulate wearable anomaly alert"}
+              {anomLoading ? <><span className="spinner" /> Secretary processing...</> : "Simulate wearable anomaly alert"}
             </button>
           </div>
           {anomError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.875rem" }}>Error: {anomError}</div>}
           {anomResult && (
             <div style={{ marginBottom: "1rem" }}>
               <div className="row" style={{ marginBottom: "0.75rem" }}>
-                <span className={`badge ${anomResult.decision.urgency === "urgent" ? "badge-red" : anomResult.decision.urgency === "soon" ? "badge-yellow" : "badge-green"}`}>
-                  {anomResult.decision.urgency.toUpperCase()}
-                </span>
+                <span className="badge badge-green">COMPLETE</span>
                 <span className="badge badge-orange">{anomResult.provider}</span>
-                {anomResult.decision.should_contact_clinic && <span className="badge badge-red">ESCALATED</span>}
+                <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>
+                  {anomResult.turns} turn(s), {anomResult.toolCallLog.length} tool call(s)
+                </span>
+                {anomResult.toolCallLog.length > 1 && (
+                  <span className="badge badge-red">ESCALATED</span>
+                )}
               </div>
-              <div className="friendly-text" style={{ marginBottom: "1rem" }}>{anomResult.decision.summary_explanation}</div>
-              <div style={{ fontSize: "0.8125rem", marginBottom: "0.5rem" }}><strong>Recommended:</strong> {anomResult.decision.recommended_next_step}</div>
-              {anomResult.decision.questions.length > 0 && (
-                <div style={{ marginBottom: "0.75rem" }}>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>FOLLOW-UP QUESTIONS</div>
-                  {anomResult.decision.questions.map((q, i) => (
-                    <div key={i} style={{ fontSize: "0.8125rem", padding: "0.25rem 0" }}>{i + 1}. {q}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>SECRETARY DECISION</div>
+              <div className="friendly-text" style={{ marginBottom: "1rem", whiteSpace: "pre-wrap" }}>{anomResult.finalDecision}</div>
+              {anomResult.toolCallLog.length > 0 && (
+                <div style={{ marginTop: "0.75rem" }}>
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.5rem" }}>TOOL CALL LOG</div>
+                  {anomResult.toolCallLog.map((tc, i) => (
+                    <div key={i} style={{ marginBottom: "0.75rem", padding: "0.5rem", background: "var(--bg)", borderRadius: 6 }}>
+                      <div style={{ fontSize: "0.8125rem", fontWeight: 600, marginBottom: "0.375rem" }}>
+                        {i + 1}. {tc.tool}
+                      </div>
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>Input</div>
+                      <JsonView data={tc.args} maxHeight={150} />
+                      <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem", marginTop: "0.375rem" }}>Result</div>
+                      <JsonView data={tc.result} maxHeight={200} />
+                    </div>
                   ))}
                 </div>
               )}
-              {anomResult.triage_outcome && (
-                <>
-                  <div className="divider" />
-                  <div style={{ marginBottom: "0.75rem" }}>
-                    <div className="row" style={{ marginBottom: "0.5rem" }}>
-                      <h2 style={{ margin: 0, fontSize: "1rem" }}>Doctor Receptionist Outcome</h2>
-                      {anomResult.triage_outcome.escalation_triggered && <span className="badge badge-red" style={{ fontSize: "0.7rem" }}>ESCALATION TRIGGERED</span>}
-                    </div>
-                    <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>INTAKE Q&amp;A</div>
-                    {anomResult.triage_outcome.intake_questions_asked.map((q, i) => (
-                      <div key={i} style={{ fontSize: "0.8125rem", padding: "0.25rem 0.5rem", background: "var(--bg)", borderRadius: 4, marginBottom: 4 }}>
-                        <strong>Q:</strong> {q}<br />
-                        <strong>A:</strong> {Object.values(anomResult.triage_outcome!.intake_answers)[i] || "\u2014"}
-                      </div>
-                    ))}
-                    <div style={{ marginTop: "0.75rem", fontSize: "0.85rem" }}>
-                      <strong>Appointment booked:</strong> {new Date(anomResult.triage_outcome.booking_confirmation.start).toLocaleString()} ({anomResult.triage_outcome.booking_confirmation.method})
-                    </div>
-                  </div>
-                </>
-              )}
-              <div style={{ marginTop: "0.5rem" }}>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>RAW RESPONSE</div>
-                <JsonView data={anomResult} maxHeight={250} />
-              </div>
             </div>
           )}
           {anomTrace.length > 0 && (
