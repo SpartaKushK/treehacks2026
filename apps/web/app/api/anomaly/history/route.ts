@@ -1,0 +1,45 @@
+import { NextRequest, NextResponse } from "next/server";
+import { auth } from "@clerk/nextjs/server";
+import { prisma } from "@/lib/store";
+import { ensureSeed } from "@/lib/ensureSeed";
+
+export async function GET(req: NextRequest) {
+  await ensureSeed();
+  const { userId } = await auth();
+  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+
+  const url = new URL(req.url);
+  const severity = url.searchParams.get("severity");
+  const status = url.searchParams.get("status");
+  const page = parseInt(url.searchParams.get("page") || "1");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 50);
+
+  // Get user's agent IDs
+  const agents = await prisma.human.findMany({
+    where: { clerkUserId: userId },
+    select: { id: true },
+  });
+  const agentIds = agents.map((a) => a.id);
+
+  if (agentIds.length === 0) {
+    return NextResponse.json({ alerts: [], total: 0 });
+  }
+
+  const where: Record<string, unknown> = {
+    humanId: { in: agentIds },
+  };
+  if (severity && severity !== "all") where.severity = severity;
+  if (status && status !== "all") where.status = status;
+
+  const [alerts, total] = await Promise.all([
+    prisma.anomalyAlert.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip: (page - 1) * limit,
+      take: limit,
+    }),
+    prisma.anomalyAlert.count({ where }),
+  ]);
+
+  return NextResponse.json({ alerts, total, page, limit });
+}

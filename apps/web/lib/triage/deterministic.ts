@@ -3,11 +3,14 @@ import type { HealthAnomalyAlert, PatientDecision, TriageRequest, TriageOutcome 
 export function determineUrgency(
   anomalyScore: number,
   flags: string[],
-  _userContext?: string
+  _userContext?: string,
+  thresholds?: { urgent: number; soon: number }
 ): "routine" | "soon" | "urgent" {
-  if (anomalyScore >= 85) return "urgent";
+  const urgentThreshold = thresholds?.urgent ?? 85;
+  const soonThreshold = thresholds?.soon ?? 70;
+  if (anomalyScore >= urgentThreshold) return "urgent";
   if (flags.includes("SLEEP_DROP") && flags.includes("RHR_SPIKE")) return "urgent";
-  if (anomalyScore >= 70) return "soon";
+  if (anomalyScore >= soonThreshold) return "soon";
   return "routine";
 }
 
