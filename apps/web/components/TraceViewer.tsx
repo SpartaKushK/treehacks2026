@@ -19,6 +19,14 @@ const EVENT_LABELS: Record<string, string> = {
   llm_plan: "LLM Planner",
   booking_confirmed: "Booking Confirmed",
   error: "Error",
+  HEALTH_ANOMALY_RECEIVED: "Anomaly Received",
+  PATIENT_DECISION: "Patient Decision",
+  ESCALATED_TO_RECEPTIONIST: "Escalated to Receptionist",
+  TRIAGE_REQUEST_RECEIVED: "Triage Request",
+  INTAKE_TURN_1: "Intake: Questions",
+  INTAKE_TURN_2: "Intake: Answers",
+  APPOINTMENT_PROPOSED: "Appointment Proposed",
+  APPOINTMENT_BOOKED: "Appointment Booked",
 };
 
 function badgeClass(event: string): string {
@@ -26,8 +34,12 @@ function badgeClass(event: string): string {
   if (event === "policy_allow") return "badge-green";
   if (event === "policy_deny") return "badge-red";
   if (event === "payment_required") return "badge-yellow";
-  if (event === "llm_plan") return "badge-purple";
-  if (event === "booking_confirmed") return "badge-green";
+  if (event === "llm_plan" || event === "PATIENT_DECISION") return "badge-purple";
+  if (event === "booking_confirmed" || event === "APPOINTMENT_BOOKED") return "badge-green";
+  if (event === "HEALTH_ANOMALY_RECEIVED") return "badge-yellow";
+  if (event === "ESCALATED_TO_RECEPTIONIST") return "badge-red";
+  if (event === "TRIAGE_REQUEST_RECEIVED" || event === "APPOINTMENT_PROPOSED") return "badge-blue";
+  if (event === "INTAKE_TURN_1" || event === "INTAKE_TURN_2") return "badge-blue";
   if (event === "error") return "badge-red";
   return "badge-blue";
 }

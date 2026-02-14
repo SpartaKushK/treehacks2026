@@ -112,6 +112,22 @@ export async function seed() {
         name: "health_summary",
         description: "View health analytics summary",
       },
+      {
+        humanId: pari.id,
+        name: "health.anomaly_alert",
+        description: "Receive and triage a health anomaly alert from wearable data",
+      },
+    ],
+  });
+
+  // Capabilities for dr_smith
+  await prisma.capability.createMany({
+    data: [
+      {
+        humanId: drSmith.id,
+        name: "triage.intake_and_schedule",
+        description: "Run intake questions and schedule a clinic appointment",
+      },
     ],
   });
 
@@ -166,6 +182,24 @@ export async function seed() {
         capabilityName: "schedule_confirm",
         allowedCallersJson: JSON.stringify(["*"]),
         requiredScopesJson: JSON.stringify(["propose_meeting"]),
+      },
+      {
+        humanId: pari.id,
+        capabilityName: "health.anomaly_alert",
+        allowedCallersJson: JSON.stringify(["pari"]),
+        requiredScopesJson: JSON.stringify(["health:write"]),
+      },
+    ],
+  });
+
+  // Policies for dr_smith
+  await prisma.policy.createMany({
+    data: [
+      {
+        humanId: drSmith.id,
+        capabilityName: "triage.intake_and_schedule",
+        allowedCallersJson: JSON.stringify(["pari"]),
+        requiredScopesJson: JSON.stringify(["triage:write"]),
       },
     ],
   });

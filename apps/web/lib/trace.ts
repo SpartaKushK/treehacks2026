@@ -5,7 +5,12 @@ import type { TraceStep } from "@people/shared";
 /* ── In-memory buffer for active traces ── */
 const liveTraces = new Map<
   string,
-  { provider: string; steps: TraceStep[]; title: string }
+  {
+    provider: string;
+    steps: TraceStep[];
+    title: string;
+    childCalls?: { handle: string; capability: string; childTraceId: string }[];
+  }
 >();
 
 export function startTrace(opts: {
@@ -23,9 +28,27 @@ export function addStep(traceId: string, step: Omit<TraceStep, "t">): void {
   trace.steps.push({ t: new Date().toISOString(), ...step });
 }
 
+export function addChildCall(
+  traceId: string,
+  child: { handle: string; capability: string; childTraceId: string }
+): void {
+  const trace = liveTraces.get(traceId);
+  if (!trace) return;
+  if (!trace.childCalls) trace.childCalls = [];
+  trace.childCalls.push(child);
+}
+
 export async function finalizeTrace(traceId: string) {
   const trace = liveTraces.get(traceId);
   if (!trace) return null;
+
+  // Embed child call references into steps JSON
+  const data: Record<string, unknown> = {
+    steps: trace.steps,
+  };
+  if (trace.childCalls && trace.childCalls.length > 0) {
+    data.child_calls = trace.childCalls;
+  }
 
   const record = await prisma.trace.create({
     data: {
@@ -48,6 +71,7 @@ export async function getTrace(traceId: string) {
       createdAt: new Date().toISOString(),
       provider: live.provider,
       steps: live.steps,
+      child_calls: live.childCalls || [],
     };
   }
   // Then DB

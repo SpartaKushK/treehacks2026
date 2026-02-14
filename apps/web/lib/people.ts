@@ -1,14 +1,18 @@
 import { prisma } from "./store";
 import { v4 as uuid } from "uuid";
 import type { HealthSummaryOutput } from "@people/shared";
+import { handleHealthAnomalyAlert } from "./capabilities/healthAnomalyAlert";
+import { handleTriageIntakeAndSchedule } from "./capabilities/triageIntakeAndSchedule";
 
 /**
  * Route a capability invocation to the correct handler.
+ * traceId + provider are optional — used by the new anomaly/triage flow.
  */
 export async function handleCapability(
   calleeHandle: string,
   capability: string,
-  input: unknown
+  input: unknown,
+  opts?: { traceId?: string; provider?: "openai" | "claude" }
 ): Promise<{ ok: boolean; data: unknown }> {
   switch (capability) {
     case "schedule_propose":
@@ -19,6 +23,10 @@ export async function handleCapability(
       return handleScheduleConfirm(input);
     case "health_summary":
       return handleHealthSummary(calleeHandle);
+    case "health.anomaly_alert":
+      return handleHealthAnomalyAlert(input, opts?.traceId ?? "", opts?.provider ?? "claude");
+    case "triage.intake_and_schedule":
+      return handleTriageIntakeAndSchedule(input, opts?.traceId ?? "", opts?.provider ?? "claude");
     case "execute_trade":
       return { ok: false, data: { error: "capability_not_implemented" } };
     default:
