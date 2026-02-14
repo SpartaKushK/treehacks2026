@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import TopBar from "@/components/TopBar";
 import AgentCard from "@/components/AgentCard";
@@ -10,6 +10,7 @@ interface Agent {
   handle: string;
   displayName: string;
   llmProvider: string;
+  avatarPhotoUrl: string | null;
   capabilities: { id: string }[];
 }
 
@@ -18,7 +19,7 @@ interface UnclaimedAgent {
   displayName: string;
 }
 
-export default function AgentsPage() {
+function AgentsPageInner() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [unclaimed, setUnclaimed] = useState<UnclaimedAgent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,17 +74,61 @@ export default function AgentsPage() {
     <>
       <TopBar title="Agents" />
       <div className="dashboard-content">
-        <div className="section-header">
-          <h2>Your Agents</h2>
-          <button className="btn btn-primary" onClick={() => setShowCreate(!showCreate)}>
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+            Agent Registry
+          </h1>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+            Create, claim, and configure your AI agent endpoints
+          </p>
+        </div>
+
+        {/* Stats */}
+        <div className="agent-stats" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          <div className="agent-stat">
+            <div className="agent-stat-val">{agents.length}</div>
+            <div className="agent-stat-lbl">Your Agents</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val">{unclaimed.length}</div>
+            <div className="agent-stat-lbl">Available to Claim</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val">
+              {agents.reduce((sum, a) => sum + a.capabilities.length, 0)}
+            </div>
+            <div className="agent-stat-lbl">Total Capabilities</div>
+          </div>
+        </div>
+
+        {/* Your Agents */}
+        <div className="agent-section-header">
+          <span className="agent-section-title">Your Agents</span>
+          <span className="agent-section-line" />
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: "0.75rem", padding: "0.375rem 0.875rem" }}
+            onClick={() => setShowCreate(!showCreate)}
+          >
             + Create Agent
           </button>
         </div>
 
         {showCreate && (
-          <div className="card" style={{ marginBottom: "1.5rem" }}>
-            <h2 style={{ fontSize: "1rem", marginBottom: "0.75rem" }}>Create New Agent</h2>
-            <div className="row" style={{ marginBottom: "0.75rem" }}>
+          <div
+            style={{
+              marginBottom: "1.5rem",
+              padding: "1.25rem",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+            }}
+          >
+            <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
+              Create New Agent
+            </div>
+            <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end" }}>
               <div className="field">
                 <label>Handle</label>
                 <input
@@ -120,6 +165,7 @@ export default function AgentsPage() {
                 displayName={a.displayName}
                 capabilityCount={a.capabilities.length}
                 llmProvider={a.llmProvider}
+                avatarUrl={a.avatarPhotoUrl}
               />
             ))}
           </div>
@@ -127,29 +173,62 @@ export default function AgentsPage() {
 
         {/* Unclaimed demo agents */}
         {unclaimed.length > 0 && (
-          <div style={{ marginTop: "2rem" }}>
-            <h2 style={{ fontSize: "1rem", marginBottom: "0.75rem" }}>Claim Demo Agents</h2>
-            <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
-              These demo agents are available to claim. Claiming links them to your account.
+          <>
+            <div className="agent-section-header">
+              <span className="agent-section-title">Available Demo Agents</span>
+              <span className="agent-section-line" />
+              <span className="agent-section-count">{unclaimed.length} available</span>
+            </div>
+            <p style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
+              Claim a demo agent to link it to your account and start configuring it.
             </p>
             <div className="agent-grid">
               {unclaimed.map((a) => (
-                <div key={a.handle} className="card" style={{ padding: "1rem" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div>
-                      <strong>{a.displayName}</strong>
-                      <div style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>@{a.handle}</div>
-                    </div>
-                    <button className="btn btn-secondary" onClick={() => claimAgent(a.handle)}>
-                      Claim
-                    </button>
+                <div
+                  key={a.handle}
+                  style={{
+                    padding: "1rem 1.25rem",
+                    background: "var(--bg-card)",
+                    border: "1px solid var(--border)",
+                    borderRadius: "10px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{a.displayName}</div>
+                    <div style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "var(--text-dim)" }}>@{a.handle}</div>
                   </div>
+                  <button
+                    className="agent-copy-btn"
+                    onClick={() => claimAgent(a.handle)}
+                  >
+                    CLAIM
+                  </button>
                 </div>
               ))}
             </div>
-          </div>
+          </>
         )}
+
+        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
       </div>
     </>
+  );
+}
+
+export default function AgentsPage() {
+  return (
+    <Suspense fallback={
+      <>
+        <TopBar title="Agents" />
+        <div className="dashboard-content" style={{ textAlign: "center", padding: "3rem" }}>
+          <span className="spinner" />
+        </div>
+      </>
+    }>
+      <AgentsPageInner />
+    </Suspense>
   );
 }

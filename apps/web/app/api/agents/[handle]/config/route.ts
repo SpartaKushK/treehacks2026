@@ -47,6 +47,10 @@ export async function PUT(
   if (body.anomalyThresholds !== undefined) {
     updateData.anomalyThresholdJson = JSON.stringify(body.anomalyThresholds);
   }
+  if (body.heygenAvatarId !== undefined) {
+    updateData.heygenAvatarId = body.heygenAvatarId;
+    updateData.avatarPhotoUrl = body.avatarPhotoUrl || null;
+  }
 
   if (Object.keys(updateData).length > 0) {
     await prisma.human.update({

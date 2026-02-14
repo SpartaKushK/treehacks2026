@@ -8,6 +8,7 @@ import StatusBadge from "@/components/StatusBadge";
 interface LiveMetrics {
   handle: string;
   displayName: string;
+  avatarPhotoUrl: string | null;
   latestMetrics: {
     sleepHours: number;
     steps: number;
@@ -35,8 +36,6 @@ export default function AnomalyPage() {
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [alertsLoading, setAlertsLoading] = useState(true);
-
-  // Filters
   const [filterSeverity, setFilterSeverity] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
 
@@ -78,16 +77,68 @@ export default function AnomalyPage() {
     await loadLive();
   }
 
+  const urgentCount = alerts.filter((a) => a.severity === "urgent").length;
+  const activeCount = alerts.filter((a) => a.status === "active").length;
+
   return (
     <>
       <TopBar title="Anomaly Detection" />
       <div className="dashboard-content">
-        {/* Live Dashboard */}
-        <h2>Live Health Status</h2>
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+            Anomaly Detection
+          </h1>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+            Real-time health monitoring and alert management across your agents
+          </p>
+        </div>
+
+        {/* Stats */}
+        <div className="agent-stats">
+          <div className="agent-stat">
+            <div className="agent-stat-val">{liveData.length}</div>
+            <div className="agent-stat-lbl">Monitored Agents</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val">{alerts.length}</div>
+            <div className="agent-stat-lbl">Total Alerts</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val" style={{ color: activeCount > 0 ? "var(--yellow)" : "var(--text)" }}>
+              {activeCount}
+            </div>
+            <div className="agent-stat-lbl">Active</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val" style={{ color: urgentCount > 0 ? "var(--red)" : "var(--text)" }}>
+              {urgentCount}
+            </div>
+            <div className="agent-stat-lbl">Urgent</div>
+          </div>
+        </div>
+
+        {/* Live Health Status */}
+        <div className="agent-section-header">
+          <span className="agent-section-title">Live Health Status</span>
+          <span className="agent-section-line" />
+          <span className="agent-section-count">Auto-refreshes every 30s</span>
+        </div>
+
         {loading ? (
           <div style={{ padding: "2rem", textAlign: "center" }}><span className="spinner" /></div>
         ) : liveData.length === 0 ? (
-          <div className="card" style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "0.85rem" }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--text-dim)",
+              fontSize: "0.8rem",
+              padding: "1.5rem",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+            }}
+          >
             No agents with health monitoring. Configure anomaly detection on an agent to see live data.
           </div>
         ) : (
@@ -95,7 +146,16 @@ export default function AnomalyPage() {
             {liveData.map((agent) => (
               <div key={agent.handle} className={`anomaly-live-card anomaly-${agent.urgency}`}>
                 <div className="anomaly-live-header">
-                  <strong>{agent.displayName}</strong>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    {agent.avatarPhotoUrl ? (
+                      <img src={agent.avatarPhotoUrl} alt={agent.displayName} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
+                    ) : (
+                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 700 }}>
+                        {agent.displayName[0].toUpperCase()}
+                      </div>
+                    )}
+                    <strong>{agent.displayName}</strong>
+                  </div>
                   <StatusBadge status={agent.urgency} />
                 </div>
                 {agent.latestMetrics ? (
@@ -129,104 +189,114 @@ export default function AnomalyPage() {
           </div>
         )}
 
-        {/* History Feed */}
-        <div style={{ marginTop: "2rem" }}>
-          <div className="section-header">
-            <h2>Alert History</h2>
-            <div className="row" style={{ gap: "0.5rem" }}>
-              <select
-                className="filter-select"
-                value={filterSeverity}
-                onChange={(e) => setFilterSeverity(e.target.value)}
-              >
-                <option value="all">All Severity</option>
-                <option value="urgent">Urgent</option>
-                <option value="soon">Soon</option>
-                <option value="routine">Routine</option>
-              </select>
-              <select
-                className="filter-select"
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-              >
-                <option value="all">All Status</option>
-                <option value="active">Active</option>
-                <option value="resolved">Resolved</option>
-                <option value="dismissed">Dismissed</option>
-              </select>
-            </div>
+        {/* Alert History */}
+        <div className="agent-section-header">
+          <span className="agent-section-title">Alert History</span>
+          <span className="agent-section-line" />
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <select
+              className="filter-select"
+              value={filterSeverity}
+              onChange={(e) => setFilterSeverity(e.target.value)}
+            >
+              <option value="all">All Severity</option>
+              <option value="urgent">Urgent</option>
+              <option value="soon">Soon</option>
+              <option value="routine">Routine</option>
+            </select>
+            <select
+              className="filter-select"
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="resolved">Resolved</option>
+              <option value="dismissed">Dismissed</option>
+            </select>
           </div>
+        </div>
 
-          {alertsLoading ? (
-            <div style={{ padding: "1rem", textAlign: "center" }}><span className="spinner" /></div>
-          ) : alerts.length === 0 ? (
-            <div className="card" style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "0.85rem" }}>
-              No anomaly alerts found. Run an anomaly detection from the Demo page to generate alerts.
-            </div>
-          ) : (
-            <div className="alert-list">
-              {alerts.map((alert) => {
-                const decision = JSON.parse(alert.decisionJson || "{}");
-                const flags = JSON.parse(alert.flagsJson || "[]");
-                return (
-                  <div key={alert.id} className="alert-item">
-                    <div className="alert-item-header">
-                      <div className="row" style={{ gap: "0.5rem" }}>
-                        <StatusBadge status={alert.severity as "urgent" | "soon" | "routine"} />
-                        <StatusBadge status={alert.status as "active" | "resolved" | "dismissed"} />
-                        <span style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
-                          Score: {alert.anomalyScore}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
-                        {new Date(alert.createdAt).toLocaleString()}
+        {alertsLoading ? (
+          <div style={{ padding: "1rem", textAlign: "center" }}><span className="spinner" /></div>
+        ) : alerts.length === 0 ? (
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--text-dim)",
+              fontSize: "0.8rem",
+              padding: "1.5rem",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+            }}
+          >
+            No anomaly alerts found. Run an anomaly detection from the Demo page to generate alerts.
+          </div>
+        ) : (
+          <div className="agent-feed">
+            {alerts.map((alert) => {
+              const decision = JSON.parse(alert.decisionJson || "{}");
+              const flags = JSON.parse(alert.flagsJson || "[]");
+              const severityIcon = alert.severity === "urgent" ? "🔴" : alert.severity === "soon" ? "🟡" : "🟢";
+              return (
+                <div key={alert.id} className="agent-feed-item">
+                  <div className="agent-feed-icon">{severityIcon}</div>
+                  <div className="agent-feed-body">
+                    <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
+                      <StatusBadge status={alert.severity as "urgent" | "soon" | "routine"} />
+                      <StatusBadge status={alert.status as "active" | "resolved" | "dismissed"} />
+                      <span style={{ fontFamily: "monospace", fontSize: "0.65rem", color: "var(--text-dim)" }}>
+                        Score: {alert.anomalyScore}
                       </span>
                     </div>
                     {decision.summary_explanation && (
-                      <p style={{ fontSize: "0.8125rem", margin: "0.5rem 0", color: "var(--text)" }}>
-                        {decision.summary_explanation}
-                      </p>
+                      <div className="agent-feed-txt">{decision.summary_explanation}</div>
                     )}
-                    <div className="row" style={{ gap: "0.25rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                      {flags.map((f: string) => (
-                        <span key={f} className="badge badge-yellow" style={{ fontSize: "0.65rem" }}>{f}</span>
-                      ))}
-                    </div>
-                    <div className="row" style={{ gap: "0.5rem" }}>
+                    {flags.length > 0 && (
+                      <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.375rem" }}>
+                        {flags.map((f: string) => (
+                          <span key={f} className="badge badge-yellow" style={{ fontSize: "0.6rem" }}>{f}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ display: "flex", gap: "0.5rem", marginTop: "0.5rem" }}>
                       {alert.traceId && (
                         <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                          className="agent-config-btn"
                           onClick={() => router.push(`/dashboard/anomaly/${alert.traceId}`)}
                         >
-                          View Trace
+                          VIEW TRACE
                         </button>
                       )}
                       {alert.status === "active" && (
                         <>
                           <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                            className="agent-config-btn"
                             onClick={() => updateAlertStatus(alert.id, "resolve")}
                           >
-                            Resolve
+                            RESOLVE
                           </button>
                           <button
-                            className="btn btn-secondary"
-                            style={{ fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}
+                            className="agent-config-btn"
                             onClick={() => updateAlertStatus(alert.id, "dismiss")}
                           >
-                            Dismiss
+                            DISMISS
                           </button>
                         </>
                       )}
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                  <div className="agent-feed-time">
+                    {new Date(alert.createdAt).toLocaleString()}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
       </div>
     </>
   );

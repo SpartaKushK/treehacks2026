@@ -44,6 +44,7 @@ export async function GET() {
     return {
       handle: agent.handle,
       displayName: agent.displayName,
+      avatarPhotoUrl: agent.avatarPhotoUrl,
       latestMetrics: latest
         ? {
             sleepHours: latest.sleepHours,

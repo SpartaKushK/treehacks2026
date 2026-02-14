@@ -11,15 +11,17 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const severity = url.searchParams.get("severity");
   const status = url.searchParams.get("status");
+  const traceIdFilter = url.searchParams.get("traceId");
   const page = parseInt(url.searchParams.get("page") || "1");
   const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 50);
 
   // Get user's agent IDs
   const agents = await prisma.human.findMany({
     where: { clerkUserId: userId },
-    select: { id: true },
+    select: { id: true, heygenAvatarId: true },
   });
   const agentIds = agents.map((a) => a.id);
+  const agentAvatarMap = new Map(agents.map((a) => [a.id, a.heygenAvatarId]));
 
   if (agentIds.length === 0) {
     return NextResponse.json({ alerts: [], total: 0 });
@@ -30,6 +32,7 @@ export async function GET(req: NextRequest) {
   };
   if (severity && severity !== "all") where.severity = severity;
   if (status && status !== "all") where.status = status;
+  if (traceIdFilter) where.traceId = traceIdFilter;
 
   const [alerts, total] = await Promise.all([
     prisma.anomalyAlert.findMany({
@@ -41,5 +44,10 @@ export async function GET(req: NextRequest) {
     prisma.anomalyAlert.count({ where }),
   ]);
 
-  return NextResponse.json({ alerts, total, page, limit });
+  const alertsWithAvatar = alerts.map((a) => ({
+    ...a,
+    agentAvatarId: agentAvatarMap.get(a.humanId) || null,
+  }));
+
+  return NextResponse.json({ alerts: alertsWithAvatar, total, page, limit });
 }

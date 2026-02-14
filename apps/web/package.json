@@ -11,9 +11,13 @@
   },
   "dependencies": {
     "@clerk/nextjs": "^6.37.4",
+    "@heygen/streaming-avatar": "^2.1.0",
     "@people/shared": "workspace:*",
     "@prisma/client": "^5.9.1",
+    "@supabase/supabase-js": "^2.95.3",
+    "@types/qrcode": "^1.5.6",
     "next": "^14.1.0",
+    "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "tweetnacl": "^1.0.3",

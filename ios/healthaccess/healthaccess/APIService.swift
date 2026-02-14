@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum APIError: LocalizedError {
     case invalidURL
@@ -16,8 +17,43 @@ enum APIError: LocalizedError {
     }
 }
 
+/// Wraps HealthDataPayload + device identifier + user handle for the server
+private struct UploadBody: Encodable {
+    let deviceId: String
+    let userHandle: String
+    let exportDate: Date
+    let steps: [StepData]
+    let heartRates: [HeartRateData]
+    let sleepSamples: [SleepData]
+    let activeEnergy: [ActiveEnergyData]
+    let distances: [DistanceData]
+    let workouts: [WorkoutData]
+    let weights: [WeightData]
+    let heights: [HeightData]
+    let healthEvents: [HealthEvent]
+
+    init(payload: HealthDataPayload, deviceId: String, userHandle: String) {
+        self.deviceId = deviceId
+        self.userHandle = userHandle
+        self.exportDate = payload.exportDate
+        self.steps = payload.steps
+        self.heartRates = payload.heartRates
+        self.sleepSamples = payload.sleepSamples
+        self.activeEnergy = payload.activeEnergy
+        self.distances = payload.distances
+        self.workouts = payload.workouts
+        self.weights = payload.weights
+        self.heights = payload.heights
+        self.healthEvents = payload.healthEvents
+    }
+}
+
 struct APIService {
-    static var baseURL = "https://api.example.com"
+    // TODO: Replace with your deployed URL (e.g. https://your-app.vercel.app)
+    static var baseURL = "http://localhost:3001/api"
+
+    /// The agent handle to associate this device's data with
+    static var userHandle = "pari"
 
     static func uploadHealthData(_ payload: HealthDataPayload) async throws {
         guard let url = URL(string: baseURL)?.appendingPathComponent("health-data") else {
@@ -31,8 +67,11 @@ struct APIService {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
 
+        let deviceId = await UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        let body = UploadBody(payload: payload, deviceId: deviceId, userHandle: userHandle)
+
         do {
-            request.httpBody = try encoder.encode(payload)
+            request.httpBody = try encoder.encode(body)
         } catch {
             throw APIError.encodingFailed
         }

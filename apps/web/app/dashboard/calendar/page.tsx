@@ -81,42 +81,89 @@ export default function CalendarPage() {
     <>
       <TopBar title="Calendar" />
       <div className="dashboard-content">
-        <div className="section-header">
-          <div className="row" style={{ gap: "0.75rem" }}>
-            <div className="field">
-              <label>Agent</label>
-              <select value={selectedAgent} onChange={(e) => setSelectedAgent(e.target.value)}>
-                {agents.map((a) => (
-                  <option key={a.handle} value={a.handle}>{a.displayName} (@{a.handle})</option>
-                ))}
-              </select>
-            </div>
-            {selectedAgentData?.hasGoogle && (
-              <button className="btn btn-secondary" onClick={syncCalendar} disabled={syncing}>
-                {syncing ? <><span className="spinner" /> Syncing...</> : "Sync Google Calendar"}
-              </button>
-            )}
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+            Calendar
+          </h1>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+            View and sync scheduled events across your agents
+          </p>
+        </div>
+
+        {/* Stats */}
+        <div className="agent-stats" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          <div className="agent-stat">
+            <div className="agent-stat-val">{events.length}</div>
+            <div className="agent-stat-lbl">Total Events</div>
           </div>
-          {selectedAgentData && !selectedAgentData.hasGoogle && (
-            <button
-              className="btn btn-primary"
-              onClick={() => window.location.href = `/api/google/connect?handle=${selectedAgent}`}
+          <div className="agent-stat">
+            <div className="agent-stat-val">{Object.keys(eventsByDate).length}</div>
+            <div className="agent-stat-lbl">Active Days</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val" style={{ color: selectedAgentData?.hasGoogle ? "var(--green)" : "var(--text-dim)" }}>
+              {selectedAgentData?.hasGoogle ? "LINKED" : "—"}
+            </div>
+            <div className="agent-stat-lbl">Google Calendar</div>
+          </div>
+        </div>
+
+        {/* Agent selector + controls */}
+        <div className="agent-section-header">
+          <span className="agent-section-title">Schedule</span>
+          <span className="agent-section-line" />
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <select
+              className="filter-select"
+              value={selectedAgent}
+              onChange={(e) => setSelectedAgent(e.target.value)}
             >
-              Connect Google Calendar
-            </button>
-          )}
+              {agents.map((a) => (
+                <option key={a.handle} value={a.handle}>{a.displayName} (@{a.handle})</option>
+              ))}
+            </select>
+            {selectedAgentData?.hasGoogle ? (
+              <button
+                className="agent-config-btn"
+                onClick={syncCalendar}
+                disabled={syncing}
+                style={{ padding: "0.375rem 0.75rem" }}
+              >
+                {syncing ? "SYNCING..." : "SYNC GOOGLE"}
+              </button>
+            ) : selectedAgentData ? (
+              <button
+                className="btn btn-primary"
+                style={{ fontSize: "0.7rem", padding: "0.375rem 0.75rem" }}
+                onClick={() => window.location.href = `/api/google/connect?handle=${selectedAgent}`}
+              >
+                Connect Google
+              </button>
+            ) : null}
+          </div>
         </div>
 
         {loading ? (
           <div style={{ padding: "2rem", textAlign: "center" }}><span className="spinner" /></div>
         ) : Object.keys(eventsByDate).length === 0 ? (
-          <div className="card" style={{ textAlign: "center", color: "var(--text-dim)", fontSize: "0.85rem" }}>
+          <div
+            style={{
+              textAlign: "center",
+              color: "var(--text-dim)",
+              fontSize: "0.8rem",
+              padding: "1.5rem",
+              background: "var(--bg-card)",
+              border: "1px solid var(--border)",
+              borderRadius: "10px",
+            }}
+          >
             No calendar events. Connect Google Calendar or run a scheduling demo to populate events.
           </div>
         ) : (
           <div className="calendar-list">
             {Object.entries(eventsByDate).map(([date, dayEvents]) => (
-              <div key={date} className="calendar-day">
+              <div key={date}>
                 <div className="calendar-day-header">{date}</div>
                 {dayEvents.map((event) => (
                   <div key={event.id} className="calendar-event">
@@ -135,6 +182,8 @@ export default function CalendarPage() {
             ))}
           </div>
         )}
+
+        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
       </div>
     </>
   );

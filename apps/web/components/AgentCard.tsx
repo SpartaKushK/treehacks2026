@@ -7,13 +7,26 @@ interface Props {
   displayName: string;
   capabilityCount: number;
   llmProvider: string;
+  avatarUrl?: string | null;
 }
 
-export default function AgentCard({ handle, displayName, capabilityCount, llmProvider }: Props) {
+export default function AgentCard({ handle, displayName, capabilityCount, llmProvider, avatarUrl }: Props) {
   return (
     <Link href={`/dashboard/agents/${handle}`} className="agent-card">
       <div className="agent-card-header">
-        <div className="agent-avatar">{displayName[0].toUpperCase()}</div>
+        {avatarUrl ? (
+          <img
+            src={avatarUrl}
+            alt={displayName}
+            style={{
+              width: 48, height: 48, borderRadius: "50%",
+              objectFit: "cover", border: "2px solid var(--accent)",
+              flexShrink: 0,
+            }}
+          />
+        ) : (
+          <div className="agent-avatar">{displayName[0].toUpperCase()}</div>
+        )}
         <div>
           <div className="agent-card-name">{displayName}</div>
           <div className="agent-card-handle">@{handle}</div>
