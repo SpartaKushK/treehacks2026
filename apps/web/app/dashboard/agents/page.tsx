@@ -184,6 +184,12 @@ function AgentsPageInner() {
           </button>
         </div>
 
+        {!loading && agents.length === 0 && (
+          <p style={{ fontSize: "1rem", color: "var(--text-dim)", marginBottom: "1rem", lineHeight: 1.6 }}>
+            No care agents yet. Add one or claim a demo agent below.
+          </p>
+        )}
+
         {showCreate && (
           <div
             style={{
