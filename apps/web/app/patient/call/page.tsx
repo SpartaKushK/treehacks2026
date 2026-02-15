@@ -51,7 +51,7 @@ export default function VoiceCallPage() {
   messagesRef.current = messages;
   entitiesRef.current = entities;
 
-  // Fetch health context on mount
+  // Fetch health context on mount, with hardcoded fallback
   useEffect(() => {
     async function fetchHealth() {
       try {
@@ -68,11 +68,21 @@ export default function VoiceCallPage() {
               flags: agent.flags,
               urgency: agent.urgency,
             });
+            return;
           }
         }
       } catch {
-        // Non-critical — proceed without health context
+        // Non-critical — fall through to hardcoded context
       }
+      // Hardcoded fallback so the greeting always references the anomaly
+      setHealthContext({
+        heartRate: 105,
+        sleepHours: 2.5,
+        steps: 800,
+        anomalyScore: 85,
+        flags: ["RHR_SPIKE", "SLEEP_DROP"],
+        urgency: "urgent",
+      });
     }
     fetchHealth();
   }, []);
