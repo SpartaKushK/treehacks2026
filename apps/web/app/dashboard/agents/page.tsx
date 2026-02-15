@@ -41,6 +41,7 @@ function AgentsPageInner() {
   // Avatar selection for new agents
   const [avatars, setAvatars] = useState<HeyGenAvatar[]>([]);
   const [avatarsLoading, setAvatarsLoading] = useState(false);
+  const [avatarsLoaded, setAvatarsLoaded] = useState(false);
   const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
   const [selectedAvatarPhoto, setSelectedAvatarPhoto] = useState<string | null>(null);
 
@@ -51,17 +52,21 @@ function AgentsPageInner() {
 
   // Load avatars when create form is opened
   useEffect(() => {
-    if (showCreate && avatars.length === 0 && !avatarsLoading) {
+    if (showCreate && !avatarsLoaded && !avatarsLoading) {
       setAvatarsLoading(true);
       fetch("/api/heygen/avatars")
         .then((r) => r.json())
         .then((data) => {
           setAvatars(data.avatars || []);
+          setAvatarsLoaded(true);
           setAvatarsLoading(false);
         })
-        .catch(() => setAvatarsLoading(false));
+        .catch(() => {
+          setAvatarsLoaded(true);
+          setAvatarsLoading(false);
+        });
     }
-  }, [showCreate, avatars.length, avatarsLoading]);
+  }, [showCreate, avatarsLoaded, avatarsLoading]);
 
   async function loadAgents() {
     setLoading(true);
