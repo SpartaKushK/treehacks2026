@@ -7,12 +7,9 @@
 
 import { tool, createSdkMcpServer } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
-import { handleHealthAnomalyAlert } from "../capabilities/healthAnomalyAlert";
-import { handleTriageIntakeAndSchedule } from "../capabilities/triageIntakeAndSchedule";
-import { handleCapability } from "../people";
-import { lookupClinicalEvidence } from "../clinical/evidenceService";
 import { addStep } from "../trace";
 import { runSchedulerAgent } from "../agents/SchedulerAgent";
+import { runHealthAgent } from "../agents/HealthAgent";
 
 /* ------------------------------------------------------------------ */
 /*  Active Context — module-scoped, set before each query() call       */
@@ -83,26 +80,45 @@ const analyzeAnomalyTool = tool(
     const traceId = ctx?.traceId ?? "";
     const provider = (ctx?.provider ?? "claude") as "openai" | "claude";
 
-    const result = await handleHealthAnomalyAlert(args, traceId, provider);
-    if (!result.ok) {
+    addStep(traceId, {
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
+      ok: true,
+      data: { handle: args.user_handle, request_type: "anomaly" },
+    });
+
+    try {
+      const result = await runHealthAgent(
+        {
+          user_handle: args.user_handle,
+          request_type: "anomaly",
+          data: args as unknown as Record<string, unknown>,
+        },
+        { traceId, provider, triggerData: ctx?.triggerData },
+      );
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ error: true, ...(result.data as Record<string, unknown>) }),
+            text: JSON.stringify(
+              result.error
+                ? { error: true, message: result.finalDecision }
+                : { error: false, finalDecision: result.finalDecision, message: result.finalDecision },
+            ),
+          },
+        ],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: true, message: `Health agent error: ${e instanceof Error ? e.message : String(e)}` }),
           },
         ],
       };
     }
-    const data = result.data as { decision: Record<string, unknown> };
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({ error: false, ...data.decision }),
-        },
-      ],
-    };
   }
 );
 
@@ -138,36 +154,45 @@ const triagePatientTool = tool(
     const traceId = ctx?.traceId ?? "";
     const provider = (ctx?.provider ?? "claude") as "openai" | "claude";
 
-    // The LLM often omits the full anomaly object. If missing, fill from trigger context.
-    const anomaly =
-      args.anomaly && Object.keys(args.anomaly).length > 0
-        ? args.anomaly
-        : ctx?.triggerData ?? {};
+    addStep(traceId, {
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
+      ok: true,
+      data: { handle: args.patient_handle, request_type: "triage" },
+    });
 
-    const result = await handleTriageIntakeAndSchedule(
-      { ...args, anomaly },
-      traceId,
-      provider
-    );
-    if (!result.ok) {
+    try {
+      const result = await runHealthAgent(
+        {
+          user_handle: args.patient_handle,
+          request_type: "triage",
+          data: args as unknown as Record<string, unknown>,
+        },
+        { traceId, provider, triggerData: ctx?.triggerData },
+      );
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ error: true, ...(result.data as Record<string, unknown>) }),
+            text: JSON.stringify(
+              result.error
+                ? { error: true, message: result.finalDecision }
+                : { error: false, finalDecision: result.finalDecision, message: result.finalDecision },
+            ),
+          },
+        ],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: true, message: `Health agent error: ${e instanceof Error ? e.message : String(e)}` }),
           },
         ],
       };
     }
-    const data = result.data as { outcome: Record<string, unknown> };
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({ error: false, ...data.outcome }),
-        },
-      ],
-    };
   }
 );
 
@@ -184,29 +209,48 @@ const getHealthSummaryTool = tool(
       .describe("The patient's handle (e.g. 'pari')"),
   },
   async (args) => {
-    const result = await handleCapability(
-      args.patient_handle,
-      "health_summary",
-      { patientHandle: args.patient_handle }
-    );
-    if (!result.ok) {
+    const ctx = getActiveContext();
+    const traceId = ctx?.traceId ?? "";
+    const provider = (ctx?.provider ?? "claude") as "openai" | "claude";
+
+    addStep(traceId, {
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
+      ok: true,
+      data: { handle: args.patient_handle, request_type: "summary" },
+    });
+
+    try {
+      const result = await runHealthAgent(
+        {
+          user_handle: args.patient_handle,
+          request_type: "summary",
+        },
+        { traceId, provider, triggerData: ctx?.triggerData },
+      );
+
       return {
         content: [
           {
             type: "text" as const,
-            text: JSON.stringify({ error: true, ...(result.data as Record<string, unknown>) }),
+            text: JSON.stringify(
+              result.error
+                ? { error: true, message: result.finalDecision }
+                : { error: false, finalDecision: result.finalDecision, message: result.finalDecision },
+            ),
+          },
+        ],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: true, message: `Health agent error: ${e instanceof Error ? e.message : String(e)}` }),
           },
         ],
       };
     }
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: JSON.stringify({ error: false, ...(result.data as Record<string, unknown>) }),
-        },
-      ],
-    };
   }
 );
 
@@ -363,59 +407,48 @@ const lookupClinicalEvidenceTool = tool(
   async (args) => {
     const ctx = getActiveContext();
     const traceId = ctx?.traceId ?? "";
+    const provider = (ctx?.provider ?? "claude") as "openai" | "claude";
+    const handle = (ctx?.triggerData?.user_handle as string) || "unknown";
 
     addStep(traceId, {
-      actor: "clinical_evidence_agent",
-      event: "EVIDENCE_LOOKUP_START",
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
       ok: true,
-      data: {
-        flags: args.flags,
-        medicationCount: args.medications?.length ?? 0,
-      },
+      data: { handle, request_type: "evidence" },
     });
 
-    const evidence = await lookupClinicalEvidence({
-      flags: args.flags,
-      metrics: args.metrics as Record<string, unknown> | undefined,
-      medications: args.medications,
-    });
-
-    addStep(traceId, {
-      actor: "clinical_evidence_agent",
-      event: "EVIDENCE_FOUND",
-      ok: true,
-      data: {
-        studyCount: evidence.studies.length,
-        guidelineCount: evidence.guidelines.length,
-        drugInteractionCount: evidence.drugInteractions.length,
-      },
-    });
-
-    return {
-      content: [
+    try {
+      const result = await runHealthAgent(
         {
-          type: "text" as const,
-          text: JSON.stringify({
-            error: false,
-            studies: evidence.studies.map((s) => ({
-              title: s.title,
-              authors: s.authors,
-              pmid: s.pmid,
-              url: s.url,
-              journal: s.journal,
-              year: s.year,
-            })),
-            guidelines: evidence.guidelines.map((g) => ({
-              condition: g.condition,
-              recommendation: g.recommendation,
-              source: g.source,
-            })),
-            drug_interactions: evidence.drugInteractions,
-            patient_summary: evidence.patientFriendlySummary,
-          }),
+          user_handle: handle,
+          request_type: "evidence",
+          data: args as unknown as Record<string, unknown>,
         },
-      ],
-    };
+        { traceId, provider, triggerData: ctx?.triggerData },
+      );
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify(
+              result.error
+                ? { error: true, message: result.finalDecision }
+                : { error: false, finalDecision: result.finalDecision, message: result.finalDecision },
+            ),
+          },
+        ],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: true, message: `Health agent error: ${e instanceof Error ? e.message : String(e)}` }),
+          },
+        ],
+      };
+    }
   }
 );
 

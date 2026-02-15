@@ -6,13 +6,9 @@
  * logic itself — it delegates everything here.
  */
 
-import { handleHealthAnomalyAlert } from "../capabilities/healthAnomalyAlert";
-import { handleTriageIntakeAndSchedule } from "../capabilities/triageIntakeAndSchedule";
-import { handleCapability } from "../people";
-import { lookupClinicalEvidence } from "../clinical/evidenceService";
 import { addStep } from "../trace";
-import { saveToolInteraction, type AgentType } from "../memory";
 import { runSchedulerAgent, type SchedulerInput } from "../agents/SchedulerAgent";
+import { runHealthAgent, type HealthAgentInput } from "../agents/HealthAgent";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -108,21 +104,43 @@ const analyzeAnomaly: ToolDefinition = {
   },
 
   async execute(args, ctx) {
-    const userHandle = (args.user_handle as string) || "unknown";
-    const result = await handleHealthAnomalyAlert(args, ctx.traceId, ctx.provider);
+    const handle = (args.user_handle as string) || (ctx.triggerData?.user_handle as string) || "unknown";
 
-    const output = !result.ok
-      ? { error: true, ...(result.data as Record<string, unknown>) }
-      : { error: false, ...(result.data as { decision: Record<string, unknown> }).decision };
+    addStep(ctx.traceId, {
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
+      ok: true,
+      data: { handle, request_type: "anomaly" },
+    });
 
-    // Save to health_anomaly agent's memory
     try {
-      await saveToolInteraction("health_anomaly", userHandle, "analyze_anomaly", args, output);
-    } catch (e) {
-      console.warn("[analyze_anomaly] Failed to save memory:", e);
-    }
+      const result = await runHealthAgent(
+        {
+          user_handle: handle,
+          request_type: "anomaly",
+          data: args,
+        },
+        { traceId: ctx.traceId, provider: ctx.provider, triggerData: ctx.triggerData },
+      );
 
-    return output;
+      if (result.error) {
+        return { error: true, message: result.finalDecision };
+      }
+
+      return {
+        error: false,
+        finalDecision: result.finalDecision,
+        health_agent_turns: result.turns,
+        health_agent_tool_calls: result.toolCallLog.map((tc) => tc.tool),
+        message: result.finalDecision,
+      };
+    } catch (e) {
+      console.error("[analyze_anomaly] HealthAgent delegation error:", e);
+      return {
+        error: true,
+        message: `Health agent error: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
   },
 };
 
@@ -169,25 +187,43 @@ const triagePatient: ToolDefinition = {
   },
 
   async execute(args, ctx) {
-    // The LLM often omits the full anomaly object. If missing, fill from trigger context.
-    if (!args.anomaly && ctx.triggerData) {
-      args.anomaly = ctx.triggerData;
-    }
-    const userHandle = (args.patient_handle as string) || "unknown";
-    const result = await handleTriageIntakeAndSchedule(args, ctx.traceId, ctx.provider);
+    const handle = (args.patient_handle as string) || (ctx.triggerData?.user_handle as string) || "unknown";
 
-    const output = !result.ok
-      ? { error: true, ...(result.data as Record<string, unknown>) }
-      : { error: false, ...(result.data as { outcome: Record<string, unknown> }).outcome };
+    addStep(ctx.traceId, {
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
+      ok: true,
+      data: { handle, request_type: "triage" },
+    });
 
-    // Save to triage agent's memory
     try {
-      await saveToolInteraction("triage", userHandle, "triage_patient", args, output);
-    } catch (e) {
-      console.warn("[triage_patient] Failed to save memory:", e);
-    }
+      const result = await runHealthAgent(
+        {
+          user_handle: handle,
+          request_type: "triage",
+          data: args,
+        },
+        { traceId: ctx.traceId, provider: ctx.provider, triggerData: ctx.triggerData },
+      );
 
-    return output;
+      if (result.error) {
+        return { error: true, message: result.finalDecision };
+      }
+
+      return {
+        error: false,
+        finalDecision: result.finalDecision,
+        health_agent_turns: result.turns,
+        health_agent_tool_calls: result.toolCallLog.map((tc) => tc.tool),
+        message: result.finalDecision,
+      };
+    } catch (e) {
+      console.error("[triage_patient] HealthAgent delegation error:", e);
+      return {
+        error: true,
+        message: `Health agent error: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
   },
 };
 
@@ -213,25 +249,42 @@ const getHealthSummary: ToolDefinition = {
   },
 
   async execute(args, ctx) {
-    const userHandle = (args.patient_handle as string) || "unknown";
-    const result = await handleCapability(
-      args.patient_handle as string,
-      "health_summary",
-      { patientHandle: args.patient_handle },
-    );
+    const handle = (args.patient_handle as string) || (ctx.triggerData?.user_handle as string) || "unknown";
 
-    const output = !result.ok
-      ? { error: true, ...(result.data as Record<string, unknown>) }
-      : { error: false, ...(result.data as Record<string, unknown>) };
+    addStep(ctx.traceId, {
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
+      ok: true,
+      data: { handle, request_type: "summary" },
+    });
 
-    // Save to health_anomaly agent's memory (health summary is related)
     try {
-      await saveToolInteraction("health_anomaly", userHandle, "get_health_summary", args, output);
-    } catch (e) {
-      console.warn("[get_health_summary] Failed to save memory:", e);
-    }
+      const result = await runHealthAgent(
+        {
+          user_handle: handle,
+          request_type: "summary",
+        },
+        { traceId: ctx.traceId, provider: ctx.provider, triggerData: ctx.triggerData },
+      );
 
-    return output;
+      if (result.error) {
+        return { error: true, message: result.finalDecision };
+      }
+
+      return {
+        error: false,
+        finalDecision: result.finalDecision,
+        health_agent_turns: result.turns,
+        health_agent_tool_calls: result.toolCallLog.map((tc) => tc.tool),
+        message: result.finalDecision,
+      };
+    } catch (e) {
+      console.error("[get_health_summary] HealthAgent delegation error:", e);
+      return {
+        error: true,
+        message: `Health agent error: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
   },
 };
 
@@ -382,48 +435,43 @@ const lookupClinicalEvidenceTool: ToolDefinition = {
   },
 
   async execute(args, ctx) {
-    const flags = (args.flags as string[]) || [];
-    const metrics = (args.metrics as Record<string, unknown>) || {};
-    const medications = (args.medications as string[]) || [];
+    const handle = (ctx.triggerData?.user_handle as string) || "unknown";
 
     addStep(ctx.traceId, {
-      actor: "clinical_evidence_agent",
-      event: "EVIDENCE_LOOKUP_START",
+      actor: "secretary",
+      event: "DELEGATE_TO_HEALTH_AGENT",
       ok: true,
-      data: { flags, medicationCount: medications.length },
+      data: { handle, request_type: "evidence" },
     });
 
-    const evidence = await lookupClinicalEvidence({ flags, metrics, medications });
+    try {
+      const result = await runHealthAgent(
+        {
+          user_handle: handle,
+          request_type: "evidence",
+          data: args,
+        },
+        { traceId: ctx.traceId, provider: ctx.provider, triggerData: ctx.triggerData },
+      );
 
-    addStep(ctx.traceId, {
-      actor: "clinical_evidence_agent",
-      event: "EVIDENCE_FOUND",
-      ok: true,
-      data: {
-        studyCount: evidence.studies.length,
-        guidelineCount: evidence.guidelines.length,
-        drugInteractionCount: evidence.drugInteractions.length,
-      },
-    });
+      if (result.error) {
+        return { error: true, message: result.finalDecision };
+      }
 
-    return {
-      error: false,
-      studies: evidence.studies.map((s) => ({
-        title: s.title,
-        authors: s.authors,
-        pmid: s.pmid,
-        url: s.url,
-        journal: s.journal,
-        year: s.year,
-      })),
-      guidelines: evidence.guidelines.map((g) => ({
-        condition: g.condition,
-        recommendation: g.recommendation,
-        source: g.source,
-      })),
-      drug_interactions: evidence.drugInteractions,
-      patient_summary: evidence.patientFriendlySummary,
-    };
+      return {
+        error: false,
+        finalDecision: result.finalDecision,
+        health_agent_turns: result.turns,
+        health_agent_tool_calls: result.toolCallLog.map((tc) => tc.tool),
+        message: result.finalDecision,
+      };
+    } catch (e) {
+      console.error("[lookup_clinical_evidence] HealthAgent delegation error:", e);
+      return {
+        error: true,
+        message: `Health agent error: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
   },
 };
 

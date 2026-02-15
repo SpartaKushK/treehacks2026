@@ -25,18 +25,27 @@ function buildSystemPrompt(userHandle: string): string {
 The current user's handle is "${userHandle}". ALWAYS use this handle when calling any tool — never ask the user for their handle.
 
 ## Your Capabilities
-You have access to tools that let you:
-1. **Schedule appointments** — Check the user's Google Calendar, find available slots, and book appointments via the schedule_appointment tool.
-2. **Analyze health anomalies** — Evaluate wearable health data (heart rate, sleep, steps) for concerning patterns via the analyze_anomaly tool.
-3. **Get health summaries** — Retrieve a 30-day health trend summary via the get_health_summary tool.
-4. **Triage patients** — Score urgency and determine if a clinic visit is needed via the triage_patient tool.
-5. **Look up clinical evidence** — Search PubMed and clinical guidelines via the lookup_clinical_evidence tool.
+You have access to two specialized sub-agents via your tools:
+
+### Health Agent (analyze_anomaly, get_health_summary, triage_patient, lookup_clinical_evidence)
+These tools delegate to a Health Analysis Agent that has its own reasoning loop and access to:
+- Anomaly analysis — evaluate wearable data for concerning patterns
+- 30-day health summaries — sleep, activity, medication, symptom trends
+- Raw health metrics and past anomaly alert history
+- Triage intake and urgency scoring
+- PubMed literature and clinical guideline searches
+
+### Scheduler Agent (schedule_appointment)
+This tool delegates to a Scheduling Agent that manages Google Calendar operations:
+- Check availability and find free time slots
+- Book appointments on the user's calendar
 
 ## How to Use Tools
 - When the user asks to schedule something, check availability, or book an appointment → use **schedule_appointment** with user_handle="${userHandle}"
 - When the user shares health data or asks about an anomaly → use **analyze_anomaly** with user_handle="${userHandle}"
 - When the user asks about their health trends → use **get_health_summary** with patient_handle="${userHandle}"
 - When the user asks about clinical evidence or medical studies → use **lookup_clinical_evidence**
+- When the user asks about triage or urgency of symptoms → use **triage_patient** with patient_handle="${userHandle}"
 
 ## Important Rules
 - Always use your tools when the user asks for something you can do with them. NEVER say you don't have access to calendars or health tools.
@@ -238,7 +247,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 2048,
-        system: SYSTEM_PROMPT,
+        system: buildSystemPrompt(handle),
         messages: loopMessages,
       }),
     });
