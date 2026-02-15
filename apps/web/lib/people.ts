@@ -8,6 +8,7 @@ import {
 } from "@people/shared";
 import { handleHealthAnomalyAlert } from "./capabilities/healthAnomalyAlert";
 import { handleTriageIntakeAndSchedule } from "./capabilities/triageIntakeAndSchedule";
+import { findAvailableSlots, bookCalendarEvent } from "./google-calendar";
 
 /**
  * Route a capability invocation to the correct handler.
@@ -52,18 +53,13 @@ async function handleSchedulePropose(
   const human = await prisma.human.findUnique({ where: { handle } });
   if (!human) return { ok: false, data: { error: "user_not_found" } };
 
-  // Get busy slots
-  const events = await prisma.calendarEvent.findMany({
-    where: { humanId: human.id },
-  });
-
-  // Find free slots within the time window
-  type EventSlot = (typeof events)[number];
-  const freeSlots = findFreeSlots(
-    events.map((e: EventSlot) => ({ start: e.startTs, end: e.endTs })),
+  // Find free slots using Google Calendar + local events
+  const freeSlots = await findAvailableSlots(
+    human.id,
     inp.timeWindow.start,
     inp.timeWindow.end,
-    inp.durationMins
+    inp.durationMins,
+    5
   );
 
   return {
@@ -88,17 +84,16 @@ async function handleScheduleCounter(
   const human = await prisma.human.findUnique({ where: { handle } });
   if (!human) return { ok: false, data: { error: "user_not_found" } };
 
-  const events = await prisma.calendarEvent.findMany({
-    where: { humanId: human.id },
-  });
-  type EventSlot = (typeof events)[number];
+  // Check proposed slots against Google Calendar + local events
+  const busy = await import("./google-calendar").then((m) =>
+    m.getBusySlots(human.id, inp.proposedSlots[0]?.start || new Date().toISOString(), inp.proposedSlots[inp.proposedSlots.length - 1]?.end || new Date().toISOString())
+  );
 
-  // Filter proposed slots against own calendar
   const acceptable = (inp.proposedSlots || []).filter((slot) => {
-    return !events.some(
-      (e: EventSlot) =>
-        new Date(slot.start) < new Date(e.endTs) &&
-        new Date(slot.end) > new Date(e.startTs)
+    return !busy.some(
+      (e) =>
+        new Date(slot.start) < new Date(e.end) &&
+        new Date(slot.end) > new Date(e.start)
     );
   });
 
@@ -112,15 +107,16 @@ async function handleScheduleCounter(
     };
   }
 
-  // Counter with own free slots
+  // Counter with own free slots from Google Calendar + local
   const window = inp.proposedSlots[0];
   if (!window) return { ok: true, data: { proposedSlots: [], message: "No slots available." } };
 
-  const freeSlots = findFreeSlots(
-    events.map((e: EventSlot) => ({ start: e.startTs, end: e.endTs })),
+  const freeSlots = await findAvailableSlots(
+    human.id,
     window.start,
     window.end,
-    inp.durationMins || 30
+    inp.durationMins || 30,
+    5
   );
 
   return {
@@ -149,6 +145,19 @@ async function handleScheduleConfirm(input: unknown) {
       title: inp.title,
     },
   });
+
+  // Also create on Google Calendar for each participant
+  for (const handle of inp.participants) {
+    const human = await prisma.human.findUnique({ where: { handle } });
+    if (human) {
+      await bookCalendarEvent(human.id, {
+        summary: inp.title,
+        start: inp.chosenSlot.start,
+        end: inp.chosenSlot.end,
+        description: `Booked via People API. Participants: ${inp.participants.join(", ")}`,
+      });
+    }
+  }
 
   return {
     ok: true,
@@ -253,66 +262,3 @@ async function handleHealthSummary(
   return { ok: true, data: summary };
 }
 
-/* ── Helpers ── */
-
-function findFreeSlots(
-  busy: { start: string; end: string }[],
-  windowStart: string,
-  windowEnd: string,
-  durationMins: number
-): { start: string; end: string }[] {
-  const slots: { start: string; end: string }[] = [];
-  const ws = new Date(windowStart);
-  const we = new Date(windowEnd);
-  const dur = durationMins * 60 * 1000;
-
-  // Sort busy by start
-  const sorted = [...busy].sort(
-    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
-  );
-
-  let cursor = ws.getTime();
-
-  for (const event of sorted) {
-    const eStart = new Date(event.start).getTime();
-    const eEnd = new Date(event.end).getTime();
-
-    if (eStart < cursor) {
-      cursor = Math.max(cursor, eEnd);
-      continue;
-    }
-
-    // Check gap before this event
-    while (cursor + dur <= eStart && cursor + dur <= we.getTime()) {
-      // Only schedule during reasonable hours (9am-6pm)
-      const d = new Date(cursor);
-      const hour = d.getHours();
-      if (hour >= 9 && hour < 18) {
-        slots.push({
-          start: new Date(cursor).toISOString(),
-          end: new Date(cursor + dur).toISOString(),
-        });
-        if (slots.length >= 5) return slots;
-      }
-      cursor += 30 * 60 * 1000; // advance by 30min
-    }
-
-    cursor = Math.max(cursor, eEnd);
-  }
-
-  // Check remaining time after last event
-  while (cursor + dur <= we.getTime()) {
-    const d = new Date(cursor);
-    const hour = d.getHours();
-    if (hour >= 9 && hour < 18) {
-      slots.push({
-        start: new Date(cursor).toISOString(),
-        end: new Date(cursor + dur).toISOString(),
-      });
-      if (slots.length >= 5) return slots;
-    }
-    cursor += 30 * 60 * 1000;
-  }
-
-  return slots;
-}

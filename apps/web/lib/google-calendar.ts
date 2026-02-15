@@ -114,6 +114,151 @@ export async function createGoogleEvent(
   return data.id;
 }
 
+/**
+ * Get all busy time slots for a user by merging Google Calendar events
+ * with locally stored events. Returns a unified list of busy periods.
+ */
+export async function getBusySlots(
+  humanId: string,
+  timeMin: string,
+  timeMax: string
+): Promise<{ start: string; end: string; summary: string }[]> {
+  // 1. Fetch Google Calendar events (returns [] if not connected)
+  const googleEvents = await fetchGoogleEvents(humanId, timeMin, timeMax);
+
+  // 2. Fetch local DB events
+  const localEvents = await prisma.calendarEvent.findMany({
+    where: {
+      humanId,
+      startTs: { gte: timeMin },
+      endTs: { lte: timeMax },
+    },
+    orderBy: { startTs: "asc" },
+  });
+
+  // 3. Merge, deduplicating by googleEventId
+  const googleIds = new Set(googleEvents.map((e) => e.id));
+  const merged: { start: string; end: string; summary: string }[] = [];
+
+  for (const ge of googleEvents) {
+    merged.push({ start: ge.start, end: ge.end, summary: ge.summary });
+  }
+
+  for (const le of localEvents) {
+    // Skip if this local event was already included from Google
+    if (le.googleEventId && googleIds.has(le.googleEventId)) continue;
+    merged.push({ start: le.startTs, end: le.endTs, summary: le.title });
+  }
+
+  // Sort by start time
+  merged.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
+  return merged;
+}
+
+/**
+ * Find available time slots for a user by checking both Google Calendar
+ * and local events. Returns free slots of the requested duration within
+ * the time window, filtered to reasonable hours (9am–6pm, skip weekends).
+ */
+export async function findAvailableSlots(
+  humanId: string,
+  windowStart: string,
+  windowEnd: string,
+  durationMins: number,
+  maxSlots: number = 5
+): Promise<{ start: string; end: string }[]> {
+  const busy = await getBusySlots(humanId, windowStart, windowEnd);
+
+  const slots: { start: string; end: string }[] = [];
+  const we = new Date(windowEnd).getTime();
+  const dur = durationMins * 60 * 1000;
+  const STEP = 10 * 60 * 1000; // step in 10-minute increments
+
+  // Round window start UP to the nearest 10-minute mark
+  const rawStart = new Date(windowStart).getTime();
+  const roundedStart = Math.ceil(rawStart / STEP) * STEP;
+
+  // Sort busy by start
+  const sorted = [...busy].sort(
+    (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime()
+  );
+
+  let cursor = roundedStart;
+
+  for (const event of sorted) {
+    const eStart = new Date(event.start).getTime();
+    const eEnd = new Date(event.end).getTime();
+
+    if (eStart < cursor) {
+      // Round cursor up to nearest 10 min after event ends
+      cursor = Math.ceil(Math.max(cursor, eEnd) / STEP) * STEP;
+      continue;
+    }
+
+    // Check gaps before this event
+    while (cursor + dur <= eStart && cursor + dur <= we) {
+      const d = new Date(cursor);
+      const hour = d.getHours();
+      const day = d.getDay();
+      // Only during business hours, skip weekends
+      if (hour >= 9 && hour < 18 && day !== 0 && day !== 6) {
+        slots.push({
+          start: new Date(cursor).toISOString(),
+          end: new Date(cursor + dur).toISOString(),
+        });
+        if (slots.length >= maxSlots) return slots;
+      }
+      cursor += STEP;
+    }
+
+    // Round cursor up to nearest 10 min after event ends
+    cursor = Math.ceil(Math.max(cursor, eEnd) / STEP) * STEP;
+  }
+
+  // Check remaining time after last event
+  while (cursor + dur <= we) {
+    const d = new Date(cursor);
+    const hour = d.getHours();
+    const day = d.getDay();
+    if (hour >= 9 && hour < 18 && day !== 0 && day !== 6) {
+      slots.push({
+        start: new Date(cursor).toISOString(),
+        end: new Date(cursor + dur).toISOString(),
+      });
+      if (slots.length >= maxSlots) return slots;
+    }
+    cursor += STEP;
+  }
+
+  return slots;
+}
+
+/**
+ * Book an event: creates it on Google Calendar (if connected) and saves locally.
+ * Returns the local CalendarEvent id and optional Google event id.
+ */
+export async function bookCalendarEvent(
+  humanId: string,
+  event: { summary: string; start: string; end: string; description?: string }
+): Promise<{ localId: string; googleEventId: string | null }> {
+  // Try to create on Google Calendar
+  const googleEventId = await createGoogleEvent(humanId, event);
+
+  // Save locally
+  const local = await prisma.calendarEvent.create({
+    data: {
+      humanId,
+      title: event.summary,
+      startTs: event.start,
+      endTs: event.end,
+      googleEventId: googleEventId ?? undefined,
+      source: googleEventId ? "google" : "local",
+    },
+  });
+
+  return { localId: local.id, googleEventId };
+}
+
 /** Two-way sync: pull Google events into local CalendarEvent, push local bookings to Google. */
 export async function syncCalendar(humanId: string): Promise<void> {
   // Pull: Get next 30 days of Google events
