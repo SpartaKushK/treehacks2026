@@ -12,6 +12,7 @@ import { handleCapability } from "../people";
 import { findAvailableSlots, bookCalendarEvent, getBusySlots } from "../google-calendar";
 import { prisma } from "../store";
 import { addStep } from "../trace";
+import { saveToolInteraction, type AgentType } from "../memory";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -107,12 +108,21 @@ const analyzeAnomaly: ToolDefinition = {
   },
 
   async execute(args, ctx) {
+    const userHandle = (args.user_handle as string) || "unknown";
     const result = await handleHealthAnomalyAlert(args, ctx.traceId, ctx.provider);
-    if (!result.ok) {
-      return { error: true, ...(result.data as Record<string, unknown>) };
+
+    const output = !result.ok
+      ? { error: true, ...(result.data as Record<string, unknown>) }
+      : { error: false, ...(result.data as { decision: Record<string, unknown> }).decision };
+
+    // Save to health_anomaly agent's memory
+    try {
+      await saveToolInteraction("health_anomaly", userHandle, "analyze_anomaly", args, output);
+    } catch (e) {
+      console.warn("[analyze_anomaly] Failed to save memory:", e);
     }
-    const data = result.data as { decision: Record<string, unknown> };
-    return { error: false, ...data.decision };
+
+    return output;
   },
 };
 
@@ -163,12 +173,21 @@ const triagePatient: ToolDefinition = {
     if (!args.anomaly && ctx.triggerData) {
       args.anomaly = ctx.triggerData;
     }
+    const userHandle = (args.patient_handle as string) || "unknown";
     const result = await handleTriageIntakeAndSchedule(args, ctx.traceId, ctx.provider);
-    if (!result.ok) {
-      return { error: true, ...(result.data as Record<string, unknown>) };
+
+    const output = !result.ok
+      ? { error: true, ...(result.data as Record<string, unknown>) }
+      : { error: false, ...(result.data as { outcome: Record<string, unknown> }).outcome };
+
+    // Save to triage agent's memory
+    try {
+      await saveToolInteraction("triage", userHandle, "triage_patient", args, output);
+    } catch (e) {
+      console.warn("[triage_patient] Failed to save memory:", e);
     }
-    const data = result.data as { outcome: Record<string, unknown> };
-    return { error: false, ...data.outcome };
+
+    return output;
   },
 };
 
@@ -193,16 +212,26 @@ const getHealthSummary: ToolDefinition = {
     required: ["patient_handle"],
   },
 
-  async execute(args) {
+  async execute(args, ctx) {
+    const userHandle = (args.patient_handle as string) || "unknown";
     const result = await handleCapability(
       args.patient_handle as string,
       "health_summary",
       { patientHandle: args.patient_handle },
     );
-    if (!result.ok) {
-      return { error: true, ...(result.data as Record<string, unknown>) };
+
+    const output = !result.ok
+      ? { error: true, ...(result.data as Record<string, unknown>) }
+      : { error: false, ...(result.data as Record<string, unknown>) };
+
+    // Save to health_anomaly agent's memory (health summary is related)
+    try {
+      await saveToolInteraction("health_anomaly", userHandle, "get_health_summary", args, output);
+    } catch (e) {
+      console.warn("[get_health_summary] Failed to save memory:", e);
     }
-    return { error: false, ...(result.data as Record<string, unknown>) };
+
+    return output;
   },
 };
 
@@ -347,7 +376,7 @@ const scheduleAppointment: ToolDefinition = {
       },
     });
 
-    return {
+    const output = {
       error: false,
       scheduled: true,
       booking: {
@@ -362,6 +391,15 @@ const scheduleAppointment: ToolDefinition = {
       alternative_slots: availableSlots.slice(1, 4),
       message: `Appointment booked: ${args.title} on ${new Date(chosenSlot.start).toLocaleDateString()} at ${new Date(chosenSlot.start).toLocaleTimeString()} (${method}).`,
     };
+
+    // Save to scheduler agent's memory
+    try {
+      await saveToolInteraction("scheduler", handle, "schedule_appointment", args, output);
+    } catch (e) {
+      console.warn("[schedule_appointment] Failed to save memory:", e);
+    }
+
+    return output;
   },
 };
 

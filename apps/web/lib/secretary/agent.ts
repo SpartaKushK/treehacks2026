@@ -18,6 +18,13 @@ import {
   type ToolContext,
 } from "./tools";
 import { startTrace, addStep, finalizeTrace } from "../trace";
+import {
+  getHistory,
+  formatHistoryForLLM,
+  saveInteraction,
+  saveToolInteraction,
+  type AgentType,
+} from "../memory";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -65,6 +72,9 @@ function sleep(ms: number): Promise<void> {
 export async function runSecretary(input: SecretaryInput): Promise<SecretaryResult> {
   const { triggerData, provider, triggerDescription } = input;
 
+  // Resolve the user handle for memory scoping
+  const userHandle = (triggerData.user_handle as string) || "unknown";
+
   // Start a trace for observability
   const traceId = startTrace({
     provider,
@@ -87,17 +97,51 @@ export async function runSecretary(input: SecretaryInput): Promise<SecretaryResu
       ? `${triggerDescription}\n\nTrigger data:\n${JSON.stringify(triggerData, null, 2)}`
       : `New health trigger received:\n${JSON.stringify(triggerData, null, 2)}`;
 
+  // ── Load conversation history for this user's secretary agent ──
+  let priorHistory: Array<{ role: "user" | "assistant"; content: string }> = [];
+  try {
+    const rawHistory = await getHistory("secretary", userHandle);
+    priorHistory = formatHistoryForLLM(rawHistory, 40);
+    if (priorHistory.length > 0) {
+      addStep(traceId, {
+        actor: "secretary",
+        event: "MEMORY_LOADED",
+        ok: true,
+        data: { messageCount: priorHistory.length, userHandle },
+      });
+    }
+  } catch (e) {
+    console.warn("[Secretary] Failed to load memory, proceeding without:", e);
+  }
+
   let finalDecision: string;
   let turns: number;
 
   if (provider === "openai") {
-    const result = await runOpenAILoop(userMessage, toolCtx, toolCallLog);
+    const result = await runOpenAILoop(userMessage, toolCtx, toolCallLog, priorHistory);
     finalDecision = result.finalDecision;
     turns = result.turns;
   } else {
-    const result = await runAnthropicLoop(userMessage, toolCtx, toolCallLog);
+    const result = await runAnthropicLoop(userMessage, toolCtx, toolCallLog, priorHistory);
     finalDecision = result.finalDecision;
     turns = result.turns;
+  }
+
+  // ── Save this interaction to memory ──
+  try {
+    await saveInteraction(
+      "secretary",
+      userHandle,
+      userMessage,
+      finalDecision,
+      { provider, turns, toolCallsCount: toolCallLog.length },
+    );
+    // Also save individual tool interactions
+    for (const tc of toolCallLog) {
+      await saveToolInteraction("secretary", userHandle, tc.tool, tc.args, tc.result);
+    }
+  } catch (e) {
+    console.warn("[Secretary] Failed to save memory:", e);
   }
 
   addStep(traceId, {
@@ -129,6 +173,7 @@ async function runOpenAILoop(
   userMessage: string,
   ctx: ToolContext,
   toolCallLog: ToolCallLogEntry[],
+  priorHistory: Array<{ role: "user" | "assistant"; content: string }> = [],
 ): Promise<LoopResult> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -138,9 +183,11 @@ async function runOpenAILoop(
     };
   }
 
-  // OpenAI message history
+  // OpenAI message history — inject prior conversation history
   const messages: Array<Record<string, unknown>> = [
     { role: "system", content: SECRETARY_SYSTEM_PROMPT },
+    // Inject prior conversation history for context continuity
+    ...priorHistory.map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: userMessage },
   ];
 
@@ -274,6 +321,7 @@ async function runAnthropicLoop(
   userMessage: string,
   ctx: ToolContext,
   toolCallLog: ToolCallLogEntry[],
+  priorHistory: Array<{ role: "user" | "assistant"; content: string }> = [],
 ): Promise<LoopResult> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -283,8 +331,10 @@ async function runAnthropicLoop(
     };
   }
 
-  // Anthropic message history
+  // Anthropic message history — inject prior conversation history
   const messages: Array<Record<string, unknown>> = [
+    // Inject prior conversation history for context continuity
+    ...priorHistory.map((m) => ({ role: m.role, content: m.content })),
     { role: "user", content: userMessage },
   ];
 
