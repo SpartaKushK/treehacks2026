@@ -9,6 +9,9 @@
 import { handleHealthAnomalyAlert } from "../capabilities/healthAnomalyAlert";
 import { handleTriageIntakeAndSchedule } from "../capabilities/triageIntakeAndSchedule";
 import { handleCapability } from "../people";
+import { findAvailableSlots, bookCalendarEvent, getBusySlots } from "../google-calendar";
+import { prisma } from "../store";
+import { addStep } from "../trace";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -120,9 +123,11 @@ const analyzeAnomaly: ToolDefinition = {
 const triagePatient: ToolDefinition = {
   name: "triage_patient",
   description:
-    "Send a triage request to a doctor's receptionist agent. Handles " +
-    "intake questions, assesses urgency, and books an appointment if needed. " +
-    "Use this after analyze_anomaly indicates the patient should contact a clinic.",
+    "Evaluate and score the severity/urgency of a patient's health issues. " +
+    "Performs intake questioning, assesses urgency based on anomaly data and " +
+    "context, and determines whether the patient needs to be seen. Does NOT " +
+    "handle scheduling — use schedule_appointment separately after this if " +
+    "the triage indicates the patient should be seen.",
   parameters: {
     type: "object",
     properties: {
@@ -202,68 +207,161 @@ const getHealthSummary: ToolDefinition = {
 };
 
 /* ------------------------------------------------------------------ */
-/*  Tool: schedule_appointment                                         */
+/*  Tool: schedule_appointment (Calendar Sub-Agent)                    */
 /* ------------------------------------------------------------------ */
 
 const scheduleAppointment: ToolDefinition = {
   name: "schedule_appointment",
   description:
-    "Propose and find available scheduling slots for a meeting between " +
-    "two parties. Returns available time slots based on calendar availability.",
+    "The calendar scheduling sub-agent. Checks the user's real Google Calendar " +
+    "(if connected) and local calendar for conflicts, finds genuinely free time " +
+    "slots, books the best available slot, and creates the event on Google Calendar. " +
+    "Use this whenever an appointment needs to be scheduled — after triage scoring " +
+    "indicates the patient should be seen, or for any general scheduling needs. " +
+    "This tool handles the entire scheduling workflow end-to-end.",
   parameters: {
     type: "object",
     properties: {
-      callee_handle: {
+      user_handle: {
         type: "string",
-        description: "Handle of the person to schedule with",
+        description: "Handle of the user whose calendar to check and book on",
       },
       title: {
         type: "string",
-        description: "Title/reason for the appointment",
+        description: "Title/reason for the appointment (e.g. 'Medical Appointment — urgent triage')",
+      },
+      urgency: {
+        type: "string",
+        enum: ["routine", "soon", "urgent"],
+        description: "Urgency level — affects how soon the slot is searched (urgent=today, soon=1-2 days, routine=3+ days)",
       },
       duration_mins: {
         type: "number",
         description: "Duration in minutes (default 30)",
       },
-      time_window: {
-        type: "object",
-        description: "Time window to search for slots",
-        properties: {
-          start: { type: "string", description: "ISO start timestamp" },
-          end: { type: "string", description: "ISO end timestamp" },
-        },
-        required: ["start", "end"],
+      method: {
+        type: "string",
+        enum: ["in_person", "telehealth"],
+        description: "Appointment method (default: in_person for urgent, telehealth for routine)",
+      },
+      description: {
+        type: "string",
+        description: "Optional description or notes for the calendar event",
       },
     },
-    required: ["callee_handle", "title"],
+    required: ["user_handle", "title", "urgency"],
   },
 
-  async execute(args) {
-    // Default time window: next 5 business days
-    const now = new Date();
-    const start = args.time_window
-      ? (args.time_window as { start: string }).start
-      : now.toISOString();
-    const endDate = new Date(now);
-    endDate.setDate(endDate.getDate() + 7);
-    const end = args.time_window
-      ? (args.time_window as { end: string }).end
-      : endDate.toISOString();
+  async execute(args, ctx) {
+    const handle = args.user_handle as string;
+    const urgency = (args.urgency as string) || "routine";
+    const durationMins = (args.duration_mins as number) || 30;
+    const method = (args.method as string) || (urgency === "urgent" ? "in_person" : "telehealth");
 
-    const result = await handleCapability(
-      args.callee_handle as string,
-      "schedule_propose",
-      {
-        title: args.title,
-        durationMins: args.duration_mins || 30,
-        timeWindow: { start, end },
-        locationPrefs: [],
-      },
-    );
-    if (!result.ok) {
-      return { error: true, ...(result.data as Record<string, unknown>) };
+    // 1. Resolve user
+    const human = await prisma.human.findUnique({
+      where: { handle },
+      select: { id: true },
+    });
+    if (!human) {
+      return { error: true, message: `User '${handle}' not found` };
     }
-    return { error: false, ...(result.data as Record<string, unknown>) };
+
+    // 2. Determine search window based on urgency
+    const now = new Date();
+    const dayOffset = urgency === "urgent" ? 0 : urgency === "soon" ? 1 : 3;
+    const windowStart = new Date(now);
+    windowStart.setDate(windowStart.getDate() + dayOffset);
+    const windowEnd = new Date(now);
+    windowEnd.setDate(windowEnd.getDate() + dayOffset + 7);
+
+    addStep(ctx.traceId, {
+      actor: "scheduling_agent",
+      event: "CALENDAR_SEARCH_START",
+      ok: true,
+      data: {
+        user: handle,
+        urgency,
+        windowStart: windowStart.toISOString(),
+        windowEnd: windowEnd.toISOString(),
+        durationMins,
+      },
+    });
+
+    // 3. Find available slots from Google Calendar + local events
+    const availableSlots = await findAvailableSlots(
+      human.id,
+      windowStart.toISOString(),
+      windowEnd.toISOString(),
+      durationMins,
+      5
+    );
+
+    // Also get current busy events for context
+    const busyEvents = await getBusySlots(
+      human.id,
+      windowStart.toISOString(),
+      windowEnd.toISOString(),
+    );
+
+    addStep(ctx.traceId, {
+      actor: "scheduling_agent",
+      event: "AVAILABILITY_FOUND",
+      ok: true,
+      data: {
+        freeSlots: availableSlots.length,
+        busyEvents: busyEvents.length,
+        slots: availableSlots,
+      },
+    });
+
+    if (availableSlots.length === 0) {
+      return {
+        error: false,
+        scheduled: false,
+        message: `No available ${durationMins}-minute slots found in the next ${dayOffset + 7} days for '${handle}'. The user has ${busyEvents.length} events in that window.`,
+        busy_event_count: busyEvents.length,
+      };
+    }
+
+    // 4. Book the best (first available) slot
+    const chosenSlot = availableSlots[0];
+
+    const bookingResult = await bookCalendarEvent(human.id, {
+      summary: args.title as string,
+      start: chosenSlot.start,
+      end: chosenSlot.end,
+      description: (args.description as string) || `${args.title}. Urgency: ${urgency}. Method: ${method}.`,
+    });
+
+    addStep(ctx.traceId, {
+      actor: "scheduling_agent",
+      event: "APPOINTMENT_BOOKED",
+      ok: true,
+      data: {
+        slot: chosenSlot,
+        method,
+        localId: bookingResult.localId,
+        googleEventId: bookingResult.googleEventId,
+        createdOnGoogle: !!bookingResult.googleEventId,
+      },
+    });
+
+    return {
+      error: false,
+      scheduled: true,
+      booking: {
+        start: chosenSlot.start,
+        end: chosenSlot.end,
+        method,
+        title: args.title,
+      },
+      google_calendar: bookingResult.googleEventId
+        ? { synced: true, event_id: bookingResult.googleEventId }
+        : { synced: false, reason: "Google Calendar not connected — saved locally" },
+      alternative_slots: availableSlots.slice(1, 4),
+      message: `Appointment booked: ${args.title} on ${new Date(chosenSlot.start).toLocaleDateString()} at ${new Date(chosenSlot.start).toLocaleTimeString()} (${method}).`,
+    };
   },
 };
 
