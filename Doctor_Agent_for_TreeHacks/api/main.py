@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info(f"🏥 Doctor Agent starting up...")
+    logger.info("Doctor Agent starting up...")
     logger.info(f"   Doctor: {config.DOCTOR_NAME}")
     logger.info(f"   Model: {config.CLAUDE_MODEL}")
 

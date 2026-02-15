@@ -190,16 +190,14 @@ export default function ChatPage() {
     }
   }
 
-  function handleVoiceTranscript(text: string) {
-    setInput(text);
-    // Optionally auto-send after voice input
-    setTimeout(() => {
-      if (text.trim()) {
-        setInput(text);
-        // Auto-send the voice message after a short delay
-        setTimeout(handleSend, 100);
-      }
-    }, 100);
+  async function handleClearHistory() {
+    try {
+      await fetch("/api/chat/clear", { method: "POST" });
+      setMessages([]);
+      setError(null);
+    } catch {
+      setError("Failed to clear history");
+    }
   }
 
   return (
@@ -306,6 +304,15 @@ export default function ChatPage() {
           disabled={streaming}
           style={{ flex: 1 }}
         />
+        <button
+          type="button"
+          className="btn"
+          onClick={handleClearHistory}
+          disabled={streaming}
+          title="Clear chat history"
+        >
+          Clear
+        </button>
         <button
           className="btn btn-primary"
           onClick={handleSend}

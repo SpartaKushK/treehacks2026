@@ -159,6 +159,24 @@ export function formatHistoryForLLM(
 }
 
 /**
+ * Clear all messages for a conversation (e.g. flush chat history).
+ * Leaves the conversation record so getOrCreateConversation still works.
+ */
+export async function clearConversation(
+  agentType: AgentType,
+  userHandle: string,
+): Promise<void> {
+  const convo = await prisma.agentConversation.findUnique({
+    where: {
+      agentType_userHandle: { agentType, userHandle },
+    },
+    select: { id: true },
+  });
+  if (!convo) return;
+  await prisma.agentMessage.deleteMany({ where: { conversationId: convo.id } });
+}
+
+/**
  * Convenience: save a full interaction (user trigger + assistant decision)
  * to a specific agent's memory in one call.
  */

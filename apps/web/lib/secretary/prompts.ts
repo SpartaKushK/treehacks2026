@@ -6,6 +6,10 @@
  * domain logic to sub-tools, and makes final decisions based on results.
  */
 
+import { renderAgentRegistry } from "../agentRegistry";
+
+const AGENT_REGISTRY_TEXT = renderAgentRegistry();
+
 export const SECRETARY_SYSTEM_PROMPT = `You are a Secretary Agent — the central orchestrator for a patient's health management system, powered by the Claude Agent SDK.
 
 ## Your Role
@@ -42,6 +46,17 @@ Search the web for additional health information beyond PubMed. Use for recent n
 
 #### 7. WebFetch
 Fetch specific health articles or medical guidelines from known URLs for detailed analysis.
+
+#### 8. notify_doctor_agent
+Forward a HealthAlert payload to the external Doctor Agent at /alert so it can run its own triage + scheduling pipeline. Use patient_agent_url from the registry (defaults to /api/patient/agent).
+
+#### 9. check_doctor_availability
+Return free slots on a doctor's calendar without booking. Use this when the user asks for doctor availability (e.g., next 12 hours) instead of immediately scheduling.
+
+## Agent Registry
+Before contacting or delegating to another agent, consult the Agent Registry below to understand required endpoints and payloads. Use the matching tool (e.g., notify_doctor_agent for the Doctor Agent) and include the fields the registry lists.
+
+${AGENT_REGISTRY_TEXT}
 
 ## Decision-Making Guidelines
 

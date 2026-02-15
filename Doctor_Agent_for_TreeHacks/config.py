@@ -1,7 +1,11 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Doctor Agent project root (directory containing config.py)
+_PROJECT_ROOT = Path(__file__).resolve().parent
 
 # ─── Anthropic ────────────────────────────────────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
@@ -12,22 +16,33 @@ DOCTOR_NAME = os.environ.get("DOCTOR_NAME", "Dr. Sarah Chen")
 DOCTOR_ID = os.environ.get("DOCTOR_ID", "dr_001")
 DOCTOR_EMAIL = os.environ.get("DOCTOR_EMAIL", "dr.chen@clinic.com")
 
-# Google Calendar ID for the doctor (usually their email)
+# Google Calendar ID for the doctor. With a service account this must be the
+# calendar ID you shared with the service account (e.g. your Gmail address or
+# the calendar ID from Google Calendar settings).
 DOCTOR_CALENDAR_ID = os.environ.get("DOCTOR_CALENDAR_ID", DOCTOR_EMAIL)
 
 # ─── Google Calendar / OAuth ──────────────────────────────────────────────────
-# Path to the service account JSON (for doctor's calendar)
-GOOGLE_SERVICE_ACCOUNT_FILE = os.environ.get(
+# Option A: Service account — no user sign-in. Share the doctor's calendar with
+# the service account email (see GOOGLE_SETUP.md). Path can be relative to this project.
+_raw_path = os.environ.get(
     "GOOGLE_SERVICE_ACCOUNT_FILE", "credentials/service_account.json"
 )
-# OAuth client secrets (for patient calendar, when needed)
+GOOGLE_SERVICE_ACCOUNT_FILE = (
+    str(_PROJECT_ROOT / _raw_path) if not os.path.isabs(_raw_path) else _raw_path
+)
+# Option B: OAuth refresh token — doctor signs in once (e.g. via Next.js "Connect
+# Google Calendar"); save the refresh_token here. Agent uses it forever (no sign-in again).
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REFRESH_TOKEN = os.environ.get("GOOGLE_REFRESH_TOKEN", "")
+# OAuth client secrets file (for patient calendar, when needed)
 GOOGLE_OAUTH_CLIENT_SECRET_FILE = os.environ.get(
     "GOOGLE_OAUTH_CLIENT_SECRET_FILE", "credentials/oauth_client_secret.json"
 )
 
 # ─── Scheduling ───────────────────────────────────────────────────────────────
-# How many days out to search for available slots
-SCHEDULING_WINDOW_DAYS = 7
+# How many days out to search for available slots (up to 10 days)
+SCHEDULING_WINDOW_DAYS = 10
 APPOINTMENT_DURATION_MINUTES = 60
 MAX_SCHEDULING_ROUNDS = 3  # max back-and-forth rounds before fallback
 

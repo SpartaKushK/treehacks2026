@@ -128,6 +128,7 @@ class TriageOutcome(BaseModel):
     proposed_slots: list[TimeSlot]
     booking_confirmation: BookingConfirmation
     escalation_triggered: bool
+    calendar_event_id: str | None = None
 
 
 # ── Planner output ──

@@ -20,6 +20,7 @@ import {
   setActiveContext,
   getActiveContext,
 } from "./healthcareMcpServer";
+import { toOpenAITools, executeTool } from "./tools";
 import { preToolUseHook, postToolUseHook } from "./traceHooks";
 import { startTrace, addStep, finalizeTrace } from "../trace";
 import {
@@ -86,21 +87,18 @@ export async function runSecretary(
 
   const toolCallLog: ToolCallLogEntry[] = [];
 
-  addStep(traceId, {
-    actor: "secretary",
-    event: "WORKFLOW_START",
-    ok: true,
-    data: { triggerData, provider: "claude", sdk: "claude-agent-sdk" },
-  });
-
   // Build the user message from the trigger
   const userMessage = triggerDescription
     ? `${triggerDescription}\n\nTrigger data:\n${JSON.stringify(triggerData, null, 2)}`
     : `New health trigger received:\n${JSON.stringify(triggerData, null, 2)}`;
 
-  // Check for API key — fall back to deterministic if missing
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
+  // Prefer requested provider; if its key is missing, try the other LLM before giving up
+  const claudeKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const useClaude = input.provider === "claude" ? !!claudeKey : !openaiKey && !!claudeKey;
+  const useOpenAI = !useClaude && !!openaiKey;
+
+  if (!useClaude && !useOpenAI) {
     const fallback = deterministicFallback(userMessage);
     addStep(traceId, {
       actor: "secretary",
@@ -118,11 +116,21 @@ export async function runSecretary(
     };
   }
 
-  // Set context for MCP tools and hooks
-  setActiveContext({ traceId, provider: "claude", triggerData });
+  const effectiveProvider: "openai" | "claude" = useClaude ? "claude" : "openai";
+  addStep(traceId, {
+    actor: "secretary",
+    event: "WORKFLOW_START",
+    ok: true,
+    data: { triggerData, provider: effectiveProvider, sdk: useClaude ? "claude-agent-sdk" : "openai" },
+  });
+
+  // Set context for MCP tools and hooks (and OpenAI tool execution)
+  setActiveContext({ traceId, provider: effectiveProvider, triggerData });
 
   try {
-    const result = await runAgentSDKLoop(userMessage, traceId, toolCallLog);
+    const result = useClaude
+      ? await runAgentSDKLoop(userMessage, traceId, toolCallLog)
+      : await runOpenAILoop(userMessage, traceId, toolCallLog, triggerData);
 
     addStep(traceId, {
       actor: "secretary",
@@ -145,7 +153,7 @@ export async function runSecretary(
         userHandle,
         userMessage,
         result.finalDecision,
-        { provider: "claude", turns: result.turns, toolCallsCount: toolCallLog.length },
+        { provider: effectiveProvider, turns: result.turns, toolCallsCount: toolCallLog.length },
       );
       for (const tc of toolCallLog) {
         await saveToolInteraction("secretary", userHandle, tc.tool, tc.args, tc.result);
@@ -158,17 +166,17 @@ export async function runSecretary(
       traceId,
       finalDecision: result.finalDecision,
       toolCallLog,
-      provider: "claude",
+      provider: effectiveProvider,
       turns: result.turns,
       sessionId: result.sessionId,
       costUsd: result.costUsd,
     };
   } catch (err) {
-    console.error("[Secretary/AgentSDK] Error:", err);
+    console.error("[Secretary] Error:", err);
     const fallback =
       toolCallLog.length > 0
         ? buildFallbackSummary(toolCallLog)
-        : `Agent SDK error: ${err instanceof Error ? err.message : String(err)}`;
+        : `Agent error: ${err instanceof Error ? err.message : String(err)}`;
 
     addStep(traceId, {
       actor: "secretary",
@@ -183,7 +191,7 @@ export async function runSecretary(
       traceId,
       finalDecision: fallback,
       toolCallLog,
-      provider: "claude",
+      provider: effectiveProvider,
       turns: 0,
     };
   } finally {
@@ -192,7 +200,7 @@ export async function runSecretary(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Agent SDK Loop                                                     */
+/*  OpenAI tool-calling loop (fallback when Claude key missing)        */
 /* ------------------------------------------------------------------ */
 
 interface AgentLoopResult {
@@ -201,6 +209,120 @@ interface AgentLoopResult {
   sessionId?: string;
   costUsd?: number;
 }
+
+async function runOpenAILoop(
+  userMessage: string,
+  traceId: string,
+  toolCallLog: ToolCallLogEntry[],
+  triggerData: Record<string, unknown>,
+): Promise<AgentLoopResult> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return {
+      finalDecision: "OpenAI API key not configured.",
+      turns: 0,
+    };
+  }
+
+  const tools = toOpenAITools();
+  const ctx = { traceId, provider: "openai" as const, triggerData };
+  const messages: Array<Record<string, unknown>> = [
+    { role: "system", content: SECRETARY_SYSTEM_PROMPT },
+    { role: "user", content: userMessage },
+  ];
+  let turns = 0;
+  const maxTurns = 15;
+  let requestFinalSummary = false;
+
+  while (turns < maxTurns) {
+    turns++;
+    const body: Record<string, unknown> = {
+      model: "gpt-4o-mini",
+      messages,
+      max_tokens: 4096,
+    };
+    if (tools.length) {
+      body.tools = tools;
+      body.tool_choice = requestFinalSummary ? "none" : "auto";
+    }
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    const msg = data.choices?.[0]?.message;
+    if (!msg) {
+      const err = data.error?.message || JSON.stringify(data);
+      return {
+        finalDecision: toolCallLog.length > 0 ? buildFallbackSummary(toolCallLog) : `OpenAI error: ${err}`,
+        turns,
+      };
+    }
+
+    const content = typeof msg.content === "string" ? msg.content : msg.content?.[0]?.text ?? "";
+    const toolCalls = msg.tool_calls || [];
+
+    if (toolCalls.length === 0) {
+      return {
+        finalDecision: content || "Workflow complete (no summary provided).",
+        turns,
+      };
+    }
+
+    messages.push({
+      role: "assistant",
+      content: content || null,
+      tool_calls: toolCalls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
+        id: tc.id,
+        type: "function",
+        function: { name: tc.function?.name || "", arguments: tc.function?.arguments || "{}" },
+      })),
+    });
+
+    for (const tc of toolCalls) {
+      const id = tc.id;
+      const name = tc.function?.name || "";
+      const argsStr = tc.function?.arguments || "{}";
+      let args: Record<string, unknown> = {};
+      try {
+        args = JSON.parse(argsStr);
+      } catch {
+        args = {};
+      }
+      addStep(traceId, {
+        actor: "secretary",
+        event: "TOOL_CALL",
+        ok: true,
+        data: { tool: name, args },
+      });
+      const result = await executeTool(name, args, ctx);
+      toolCallLog.push({ tool: name, args, result });
+      messages.push({
+        role: "tool",
+        tool_call_id: id,
+        content: JSON.stringify(result),
+      });
+    }
+
+    // Force a final text-only response next turn (tool_choice: "none" set above on next iteration)
+    messages.push({
+      role: "user",
+      content:
+        "Based on the tool results above, provide a concise final summary for the care team. Do not call any additional tools.",
+    });
+    requestFinalSummary = true;
+  }
+
+  return {
+    finalDecision: toolCallLog.length > 0 ? buildFallbackSummary(toolCallLog) : "Max turns reached.",
+    turns,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/*  Agent SDK Loop (Claude)                                            */
+/* ------------------------------------------------------------------ */
 
 async function runAgentSDKLoop(
   userMessage: string,
@@ -232,6 +354,7 @@ async function runAgentSDKLoop(
         "mcp__healthcare__triage_patient",
         "mcp__healthcare__get_health_summary",
         "mcp__healthcare__schedule_appointment",
+        "mcp__healthcare__notify_doctor_agent",
         "WebSearch",
         "WebFetch",
       ],

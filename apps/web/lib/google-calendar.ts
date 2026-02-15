@@ -83,6 +83,24 @@ export async function fetchGoogleEvents(
   }));
 }
 
+/**
+ * Ensure datetime is in UTC ISO format for Google Calendar.
+ * If the string has no timezone (e.g. "2026-02-17T09:00:00"), treat as Pacific
+ * so we don't store 9am as UTC (which would display as 1am/2am Pacific).
+ */
+function toUTCISO(dateTimeStr: string): string {
+  const s = dateTimeStr.trim();
+  if (/[Zz+-]\d{2}:?\d{2}$/.test(s) || /[Zz+-]\d{2}$/.test(s)) {
+    return new Date(s).toISOString();
+  }
+  const month = parseInt(s.slice(5, 7), 10);
+  const pstOffset = "-08:00";
+  const pdtOffset = "-07:00";
+  const isDST = month >= 3 && month <= 10;
+  const withOffset = s.replace(/Z?$/, isDST ? pdtOffset : pstOffset);
+  return new Date(withOffset).toISOString();
+}
+
 /** Create a Google Calendar event. Returns the event ID. */
 export async function createGoogleEvent(
   humanId: string,
@@ -90,6 +108,9 @@ export async function createGoogleEvent(
 ): Promise<string | null> {
   const tokens = await getTokens(humanId);
   if (!tokens) return null;
+
+  const startUTC = toUTCISO(event.start);
+  const endUTC = toUTCISO(event.end);
 
   const res = await fetch(
     `${GOOGLE_CALENDAR_API}/calendars/primary/events`,
@@ -102,8 +123,8 @@ export async function createGoogleEvent(
       body: JSON.stringify({
         summary: event.summary,
         description: event.description || "",
-        start: { dateTime: event.start },
-        end: { dateTime: event.end },
+        start: { dateTime: startUTC },
+        end: { dateTime: endUTC },
       }),
     }
   );
