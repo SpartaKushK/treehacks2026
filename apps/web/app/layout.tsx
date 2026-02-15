@@ -13,7 +13,6 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    // @ts-expect-error - ClerkProvider async compatibility
     <ClerkProvider
       appearance={{
         variables: {
