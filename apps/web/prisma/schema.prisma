@@ -109,6 +109,7 @@ model AnomalyAlert {
   anomalyScore      Int
   flagsJson         String    @default("[]")
   decisionJson      String    @default("{}")
+  evidenceJson      String?
   triageOutcomeJson String?
   status            String    @default("active")
   createdAt         DateTime  @default(now())
