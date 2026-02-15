@@ -36,8 +36,11 @@ export async function handleTriageIntakeAndSchedule(
 
   const doctorAgentUrl = process.env.DOCTOR_AGENT_URL || "http://localhost:8000";
 
+  let triageSource = "deterministic_fallback";
+
   try {
     outcome = await callDoctorAgent(req, doctorAgentUrl);
+    triageSource = "python_doctor_agent";
     addStep(traceId, {
       actor: "dr_smith",
       event: "DOCTOR_AGENT_USED",
@@ -46,6 +49,13 @@ export async function handleTriageIntakeAndSchedule(
     });
   } catch (agentErr) {
     // Doctor Agent unavailable — fall back to in-process LLM / deterministic
+    addStep(traceId, {
+      actor: "dr_smith",
+      event: "DOCTOR_AGENT_FALLBACK",
+      ok: true,
+      data: { reason: String(agentErr) },
+    });
+
     const apiKey = provider === "openai"
       ? process.env.OPENAI_API_KEY
       : process.env.ANTHROPIC_API_KEY;
@@ -53,6 +63,7 @@ export async function handleTriageIntakeAndSchedule(
     if (apiKey) {
       try {
         outcome = await callLLMForTriage(req, provider, apiKey);
+        triageSource = `ts_llm_${provider}`;
       } catch {
         outcome = generateTriageOutcome(req);
       }
@@ -60,6 +71,9 @@ export async function handleTriageIntakeAndSchedule(
       outcome = generateTriageOutcome(req);
     }
   }
+
+  // Attach source tag so the caller can verify which backend handled triage
+  (outcome as Record<string, unknown>)._triage_source = triageSource;
 
   // Simulate multi-turn intake
   addStep(traceId, {
