@@ -6,10 +6,10 @@ import { usePathname } from "next/navigation";
 const NAV_ITEMS = [
   { href: "/dashboard", label: "Home", icon: "⌂" },
   { href: "/dashboard/chat", label: "Chat", icon: "◬" },
-  { href: "/dashboard/agents", label: "Agents", icon: "◉" },
-  { href: "/dashboard/anomaly", label: "Anomaly", icon: "△" },
-  { href: "/dashboard/calendar", label: "Calendar", icon: "▦" },
-  { href: "/dashboard/demo", label: "Demo", icon: "▷" },
+  { href: "/dashboard/agents", label: "Care Team", icon: "◉" },
+  { href: "/dashboard/anomaly", label: "Health Alerts", icon: "△" },
+  { href: "/dashboard/calendar", label: "Schedule", icon: "▦" },
+  { href: "/dashboard/demo", label: "Live Demo", icon: "▷" },
 ];
 
 export default function Sidebar() {
@@ -19,9 +19,9 @@ export default function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <Link href="/dashboard" style={{ textDecoration: "none", color: "var(--text)" }}>
-          <strong>People API</strong>
+          <strong>CareSync</strong>
         </Link>
-        <span className="sidebar-logo-sub">TreeHacks 2026</span>
+        <span className="sidebar-logo-sub">Elderly Care Platform</span>
       </div>
       <nav className="sidebar-nav">
         {NAV_ITEMS.map((item) => {

@@ -130,8 +130,8 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
           aspectRatio: "1",
           borderRadius: "1rem",
           overflow: "hidden",
-          background: "#0a0a0f",
-          border: isTalking ? "2px solid var(--accent)" : "2px solid var(--glass-border)",
+          background: "#f1f5f9",
+          border: isTalking ? "2px solid var(--accent)" : "2px solid var(--border)",
           transition: "border-color 0.3s",
         }}
       >

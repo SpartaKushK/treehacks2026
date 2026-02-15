@@ -79,15 +79,15 @@ export default function CalendarPage() {
 
   return (
     <>
-      <TopBar title="Calendar" />
+      <TopBar title="Schedule" />
       <div className="dashboard-content">
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-            Calendar
+            Care Schedule
           </h1>
           <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
-            View and sync scheduled events across your agents
+            Upcoming appointments, care visits, and check-ins for your patients
           </p>
         </div>
 
@@ -95,7 +95,7 @@ export default function CalendarPage() {
         <div className="agent-stats" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
           <div className="agent-stat">
             <div className="agent-stat-val">{events.length}</div>
-            <div className="agent-stat-lbl">Total Events</div>
+            <div className="agent-stat-lbl">Upcoming Visits</div>
           </div>
           <div className="agent-stat">
             <div className="agent-stat-val">{Object.keys(eventsByDate).length}</div>
@@ -111,7 +111,7 @@ export default function CalendarPage() {
 
         {/* Agent selector + controls */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Schedule</span>
+          <span className="agent-section-title">Appointments</span>
           <span className="agent-section-line" />
           <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
             <select
@@ -158,7 +158,7 @@ export default function CalendarPage() {
               borderRadius: "10px",
             }}
           >
-            No calendar events. Connect Google Calendar or run a scheduling demo to populate events.
+            No upcoming appointments. Connect Google Calendar or try the Live Demo to see scheduling in action.
           </div>
         ) : (
           <div className="calendar-list">
@@ -183,7 +183,7 @@ export default function CalendarPage() {
           </div>
         )}
 
-        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
+        <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>
       </div>
     </>
   );

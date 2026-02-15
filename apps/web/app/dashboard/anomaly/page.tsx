@@ -82,15 +82,15 @@ export default function AnomalyPage() {
 
   return (
     <>
-      <TopBar title="Anomaly Detection" />
+      <TopBar title="Health Alerts" />
       <div className="dashboard-content">
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-            Anomaly Detection
+            Health Alerts
           </h1>
           <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
-            Real-time health monitoring and alert management across your agents
+            Real-time patient health monitoring &mdash; every alert is a chance to act early and keep your patients safe.
           </p>
         </div>
 
@@ -98,7 +98,7 @@ export default function AnomalyPage() {
         <div className="agent-stats">
           <div className="agent-stat">
             <div className="agent-stat-val">{liveData.length}</div>
-            <div className="agent-stat-lbl">Monitored Agents</div>
+            <div className="agent-stat-lbl">Patients Monitored</div>
           </div>
           <div className="agent-stat">
             <div className="agent-stat-val">{alerts.length}</div>
@@ -108,7 +108,7 @@ export default function AnomalyPage() {
             <div className="agent-stat-val" style={{ color: activeCount > 0 ? "var(--yellow)" : "var(--text)" }}>
               {activeCount}
             </div>
-            <div className="agent-stat-lbl">Active</div>
+            <div className="agent-stat-lbl">Needs Attention</div>
           </div>
           <div className="agent-stat">
             <div className="agent-stat-val" style={{ color: urgentCount > 0 ? "var(--red)" : "var(--text)" }}>
@@ -120,7 +120,7 @@ export default function AnomalyPage() {
 
         {/* Live Health Status */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Live Health Status</span>
+          <span className="agent-section-title">Patient Wellbeing — Live</span>
           <span className="agent-section-line" />
           <span className="agent-section-count">Auto-refreshes every 30s</span>
         </div>
@@ -139,7 +139,7 @@ export default function AnomalyPage() {
               borderRadius: "10px",
             }}
           >
-            No agents with health monitoring. Configure anomaly detection on an agent to see live data.
+            No patients being monitored yet. Set up health monitoring for a care agent to see live data here.
           </div>
         ) : (
           <div className="anomaly-live-grid">
@@ -231,7 +231,7 @@ export default function AnomalyPage() {
               borderRadius: "10px",
             }}
           >
-            No anomaly alerts found. Run an anomaly detection from the Demo page to generate alerts.
+            No health alerts found. Try the Live Demo to see how CareSync detects and responds to health changes.
           </div>
         ) : (
           <div className="agent-feed">
@@ -296,7 +296,7 @@ export default function AnomalyPage() {
           </div>
         )}
 
-        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
+        <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>
       </div>
     </>
   );
