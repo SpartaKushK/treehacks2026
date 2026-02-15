@@ -246,7 +246,7 @@ export default function ChatPage() {
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} style={{ position: "relative" }}>
+          <div key={i} style={{ position: "relative", alignSelf: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "72%" }}>
             <div
               className={`chat-bubble ${
                 msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"
