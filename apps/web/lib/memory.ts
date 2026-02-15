@@ -15,7 +15,7 @@ import { prisma } from "./store";
 /* ------------------------------------------------------------------ */
 
 /** Supported agent types — each gets its own conversation per user */
-export type AgentType = "secretary" | "health_anomaly" | "triage" | "scheduler" | "chat";
+export type AgentType = "secretary" | "health_anomaly" | "triage" | "scheduler" | "chat" | "health_review";
 
 export interface MemoryMessage {
   role: "user" | "assistant" | "tool_call" | "tool_result";

@@ -1,13 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+
+type Mode = "chat" | "review";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
 
+const EMPTY_MESSAGES: Record<Mode, string> = {
+  chat: "Start a conversation with your AI assistant",
+  review:
+    "Ask questions about your health data \u2014 sleep, symptoms, vitals, and more",
+};
+
+const API_ROUTES: Record<Mode, { send: string; history: string }> = {
+  chat: { send: "/api/chat", history: "/api/chat/history" },
+  review: { send: "/api/chat/review", history: "/api/chat/review/history" },
+};
+
 export default function ChatPage() {
+  const [mode, setMode] = useState<Mode>("chat");
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -16,20 +31,33 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Per-mode message cache — survives tab switches without re-fetching
+  const cacheRef = useRef<Record<Mode, Message[] | null>>({ chat: null, review: null });
+
   // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Load history on mount
+  // Load history when mode changes — skip fetch if already cached
   useEffect(() => {
-    fetch("/api/chat/history")
+    setError(null);
+    const cached = cacheRef.current[mode];
+    if (cached !== null) {
+      setMessages(cached);
+      return;
+    }
+    setMessages([]);
+    fetch(API_ROUTES[mode].history)
       .then((r) => r.json())
       .then((data) => {
-        if (data.messages) setMessages(data.messages);
+        if (data.messages) {
+          setMessages(data.messages);
+          cacheRef.current[mode] = data.messages;
+        }
       })
       .catch(() => {});
-  }, []);
+  }, [mode]);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -39,6 +67,13 @@ export default function ChatPage() {
       ta.style.height = Math.min(ta.scrollHeight, 140) + "px";
     }
   }, [input]);
+
+  function switchMode(newMode: Mode) {
+    if (newMode === mode || streaming) return;
+    // Save current messages to the old mode's cache before switching
+    cacheRef.current[mode] = messages;
+    setMode(newMode);
+  }
 
   async function handleSend() {
     const text = input.trim();
@@ -54,7 +89,7 @@ export default function ChatPage() {
     setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await fetch(API_ROUTES[mode].send, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text }),
@@ -133,13 +168,28 @@ export default function ChatPage() {
 
   return (
     <div className="chat-container">
+      <div className="chat-tabs">
+        <button
+          className={`chat-tab${mode === "chat" ? " active" : ""}`}
+          onClick={() => switchMode("chat")}
+          disabled={streaming}
+        >
+          Chat
+        </button>
+        <button
+          className={`chat-tab${mode === "review" ? " active" : ""}`}
+          onClick={() => switchMode("review")}
+          disabled={streaming}
+        >
+          Health Review
+        </button>
+      </div>
+
       {error && <div className="chat-error">{error}</div>}
 
       <div className="chat-messages">
         {messages.length === 0 && !streaming && (
-          <div className="chat-empty">
-            Start a conversation with your AI assistant
-          </div>
+          <div className="chat-empty">{EMPTY_MESSAGES[mode]}</div>
         )}
 
         {messages.map((msg, i) => (
@@ -156,7 +206,11 @@ export default function ChatPage() {
                 : ""
             }`}
           >
-            {msg.content}
+            {msg.role === "assistant" ? (
+              <ReactMarkdown>{msg.content}</ReactMarkdown>
+            ) : (
+              msg.content
+            )}
           </div>
         ))}
 

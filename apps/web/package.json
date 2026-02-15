@@ -10,6 +10,7 @@
     "db:push": "prisma db push"
   },
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.42",
     "@clerk/nextjs": "^6.37.4",
     "@heygen/streaming-avatar": "^2.1.0",
     "@people/shared": "workspace:*",
@@ -23,7 +24,6 @@
     "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
-    "@anthropic-ai/claude-agent-sdk": "^0.2.42",
     "@supabase/supabase-js": "^2.95.3",
     "@types/qrcode": "^1.5.6",
     "class-variance-authority": "^0.7.1",
@@ -34,6 +34,7 @@
     "qrcode": "^1.5.4",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-markdown": "^10.1.0",
     "tailwind-merge": "^3.4.0",
     "tailwindcss-animate": "^1.0.7",
     "tweetnacl": "^1.0.3",

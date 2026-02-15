@@ -7,14 +7,52 @@ import {
   formatHistoryForLLM,
   addMessage,
 } from "@/lib/memory";
-import { observeHealthMentions } from "@/lib/health-observer";
+import { prisma } from "@/lib/store";
 
-const SYSTEM_PROMPT = `You are a helpful personal AI assistant. You are friendly, concise, and helpful. You can help with a wide range of tasks including answering questions, brainstorming, writing, analysis, and more. Keep your responses clear and well-structured.`;
+function buildSystemPrompt(
+  extractions: Array<{
+    category: string;
+    summary: string;
+    structuredData: string;
+    mentionedDate: string | null;
+    extractedAt: Date;
+    confidence: number;
+  }>,
+): string {
+  if (extractions.length === 0) {
+    return `You are a health review assistant. You have access to the user's health data extracted from previous conversations, but no health information has been recorded yet. Let the user know that once they discuss health topics in the Chat tab, you'll be able to summarize and answer questions about their health history.`;
+  }
+
+  // Group by category
+  const grouped: Record<string, typeof extractions> = {};
+  for (const e of extractions) {
+    if (!grouped[e.category]) grouped[e.category] = [];
+    grouped[e.category].push(e);
+  }
+
+  let context = "";
+  for (const [category, items] of Object.entries(grouped)) {
+    context += `\n### ${category.toUpperCase()}\n`;
+    for (const item of items) {
+      const date = item.mentionedDate || item.extractedAt.toISOString().split("T")[0];
+      context += `- [${date}] ${item.summary}`;
+      const data = JSON.parse(item.structuredData);
+      if (Object.keys(data).length > 0) {
+        context += ` (${JSON.stringify(data)})`;
+      }
+      context += "\n";
+    }
+  }
+
+  return `You are a health review assistant. You have access to the user's health data extracted from previous conversations. Help them understand trends, answer questions about their health history, and provide summaries.
+
+Below is the health information recorded so far:
+${context}
+Use this data to answer the user's questions. If they ask about something not covered by the data, let them know. Be concise and helpful.`;
+}
 
 export async function POST(req: NextRequest) {
   try {
-    // First check Clerk session — this covers signed-in users who may not
-    // have a Human agent yet (getCurrentUser requires a linked Human row).
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -36,13 +74,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use the agent handle if available, otherwise fall back to Clerk user ID
     const user = await getCurrentUser();
-    if (!user) {
-      console.warn("[POST /api/chat] No Human row for Clerk user", userId, "— health extraction will be skipped");
-    }
     const handle = user?.handle ?? userId;
-    const convoId = await getOrCreateConversation("chat", handle);
+    const convoId = await getOrCreateConversation("health_review", handle);
 
     // Persist user message
     await addMessage(convoId, {
@@ -51,8 +85,27 @@ export async function POST(req: NextRequest) {
       metadata: { timestamp: new Date().toISOString() },
     });
 
+    // Fetch health extractions for system prompt context
+    const extractions = user?.id
+      ? await prisma.healthExtraction.findMany({
+          where: { humanId: user.id },
+          orderBy: { extractedAt: "desc" },
+          take: 50,
+          select: {
+            category: true,
+            summary: true,
+            structuredData: true,
+            mentionedDate: true,
+            extractedAt: true,
+            confidence: true,
+          },
+        })
+      : [];
+
+    const systemPrompt = buildSystemPrompt(extractions);
+
     // Build messages array for Anthropic
-    const history = await getHistory("chat", handle);
+    const history = await getHistory("health_review", handle);
     const formatted = formatHistoryForLLM(history);
 
     // Merge consecutive same-role messages to avoid Anthropic 400 errors
@@ -82,14 +135,14 @@ export async function POST(req: NextRequest) {
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 2048,
         stream: true,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         messages,
       }),
     });
 
     if (!anthropicRes.ok) {
       const errText = await anthropicRes.text();
-      console.error("[POST /api/chat] Anthropic error:", errText);
+      console.error("[POST /api/chat/review] Anthropic error:", errText);
       return NextResponse.json(
         { error: "Anthropic API error", detail: errText },
         { status: anthropicRes.status },
@@ -111,7 +164,6 @@ export async function POST(req: NextRequest) {
 
             buffer += decoder.decode(value, { stream: true });
             const lines = buffer.split("\n");
-            // Keep the last potentially incomplete line in the buffer
             buffer = lines.pop() || "";
 
             for (const line of lines) {
@@ -130,13 +182,11 @@ export async function POST(req: NextRequest) {
                   // skip non-JSON lines
                 }
               }
-              // Forward the raw line to the client
               controller.enqueue(
                 new TextEncoder().encode(line + "\n"),
               );
             }
           }
-          // Flush remaining buffer
           if (buffer.trim()) {
             controller.enqueue(
               new TextEncoder().encode(buffer + "\n"),
@@ -144,28 +194,16 @@ export async function POST(req: NextRequest) {
           }
           controller.close();
         } catch (err) {
-          console.error("[POST /api/chat] stream error:", err);
+          console.error("[POST /api/chat/review] stream error:", err);
           controller.error(err);
         } finally {
-          // Persist assistant response
+          // Persist assistant response (no health observer for review agent)
           if (fullText) {
             await addMessage(convoId, {
               role: "assistant",
               content: fullText,
               metadata: { timestamp: new Date().toISOString() },
             });
-          }
-          // Fire-and-forget health extraction
-          if (user?.id) {
-            observeHealthMentions({
-              userMessage: message,
-              assistantResponse: fullText,
-              humanId: user.id,
-              conversationId: convoId,
-              currentDate: new Date().toISOString().split("T")[0],
-            }).catch((err) =>
-              console.warn("[chat] health observer error (swallowed):", err)
-            );
           }
         }
       },
@@ -179,7 +217,7 @@ export async function POST(req: NextRequest) {
       },
     });
   } catch (err) {
-    console.error("[POST /api/chat]", err);
+    console.error("[POST /api/chat/review]", err);
     return NextResponse.json(
       {
         error: "server_error",

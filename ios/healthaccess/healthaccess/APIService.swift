@@ -66,13 +66,8 @@ struct UploadResponse: Decodable {
 
 struct APIService {
     // ── Configuration ──────────────────────────────────────────────────
-    // For local dev:   "http://localhost:3000/api"
-    // For production:  "https://<your-vercel-app>.vercel.app/api"
-    #if DEBUG
-    static var baseURL = "http://localhost:3000/api"
-    #else
+    // To test against local dev server, change to: "http://localhost:3000/api"
     static var baseURL = "https://treehacks2026-nine.vercel.app/api"
-    #endif
 
     /// The agent handle to associate this device's data with
     static var userHandle = "pari"
