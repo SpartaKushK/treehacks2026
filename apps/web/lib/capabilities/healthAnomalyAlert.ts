@@ -35,13 +35,15 @@ export async function handleHealthAnomalyAlert(
   // Try LLM, fall back to deterministic
   let decision: PatientDecision;
 
-  const apiKey = provider === "openai"
-    ? process.env.OPENAI_API_KEY
-    : process.env.ANTHROPIC_API_KEY;
+  // Prefer Anthropic for reliability
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const effectiveProvider = anthropicKey ? "claude" : "openai";
+  const apiKey = anthropicKey || openaiKey;
 
   if (apiKey) {
     try {
-      decision = await callLLMForDecision(anomaly, provider, apiKey);
+      decision = await callLLMForDecision(anomaly, effectiveProvider, apiKey);
     } catch {
       decision = generatePatientDecision(anomaly);
     }

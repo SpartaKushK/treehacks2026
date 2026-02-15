@@ -221,7 +221,7 @@ async function runOpenAILoop(
 ): Promise<AgentLoopResult> {
   const openaiKey = process.env.OPENAI_API_KEY;
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
-  const apiKey = openaiKey || anthropicKey;
+  const apiKey = anthropicKey || openaiKey;
   if (!apiKey) {
     return {
       finalDecision: "No LLM API key configured.",
@@ -229,8 +229,8 @@ async function runOpenAILoop(
     };
   }
 
-  // Use Anthropic API when no OpenAI key is available
-  const useAnthropic = !openaiKey && !!anthropicKey;
+  // Prefer Anthropic — more reliable rate limits
+  const useAnthropic = !!anthropicKey;
 
   const tools = toOpenAITools();
   const ctx = { traceId, provider: (useAnthropic ? "claude" : "openai") as "openai" | "claude", triggerData };

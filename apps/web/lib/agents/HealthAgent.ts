@@ -597,12 +597,11 @@ export async function runHealthAgent(
   let result: { finalDecision: string; turns: number };
 
   try {
-    if (provider === "claude" && anthropicKey) {
+    if (anthropicKey) {
+      // Prefer Anthropic — more reliable rate limits and better tool-use support
       result = await runAnthropicLoop(userMessage, tools, toolCallLog, ctx);
     } else if (openaiKey) {
       result = await runOpenAILoop(userMessage, tools, toolCallLog, ctx);
-    } else if (anthropicKey) {
-      result = await runAnthropicLoop(userMessage, tools, toolCallLog, ctx);
     } else {
       // No API key — deterministic fallback
       result = await runDeterministicFallback(input, tools, toolCallLog, ctx);
