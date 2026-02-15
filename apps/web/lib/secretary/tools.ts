@@ -1,6 +1,13 @@
 /**
  * Secretary Agent — Tool Definitions
  *
+ * ⚠️ DEPRECATED: This architecture is replaced by the class-based agent system.
+ * Use lib/agents/PlannerAgent with sub-agents instead.
+ *
+ * See: lib/agents/PlannerAgent.ts, HealthAgent.ts, SchedulerAgent.ts
+ *
+ * This file is kept for backward compatibility only.
+ *
  * Each tool wraps an existing capability handler so the secretary LLM
  * can invoke it via function-calling. The secretary never does domain
  * logic itself — it delegates everything here.

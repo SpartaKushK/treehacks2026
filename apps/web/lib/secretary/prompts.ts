@@ -1,6 +1,13 @@
 /**
  * Secretary Agent — System Prompt
  *
+ * ⚠️ DEPRECATED: This architecture is replaced by the class-based agent system.
+ * Use lib/agents/PlannerAgent instead.
+ *
+ * See: lib/agents/PlannerAgent.ts for the new system prompt.
+ *
+ * This file is kept for backward compatibility only.
+ *
  * The secretary is the top-level orchestrator. It receives raw trigger
  * data (health alerts, wearable readings, etc.), evaluates priority,
  * delegates all analysis and domain logic to sub-tools, and makes final

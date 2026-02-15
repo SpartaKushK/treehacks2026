@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm dev)",
+      "Bash(npm install:*)",
+      "Bash(pnpm install:*)",
+      "Bash(npx next:*)",
+      "Bash(node:*)",
+      "Bash(PATH=\"/c/Program Files/nodejs:$PATH\":*)",
+      "Bash(npx prisma generate:*)",
+      "Bash(npx prisma db pull:*)",
+      "Bash(ls:*)",
+      "Bash(curl:*)",
+      "Bash(timeout 5 bash -c \"echo > /dev/tcp/db.mavwwlayckncyednpids.supabase.co/5432\")",
+      "Bash(timeout 15 bash -c 'while ! grep -q \"\"Ready\"\" \"\"C:\\\\Users\\\\Ediso\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-Ediso-OneDrive-Desktop-UCSD-FALL2024-CLASSES-Personal-Projects-TreeHacks-treehacks2026\\\\tasks\\\\b6f4e5b.output\"\" 2>/dev/null; do sleep 1; done')",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(npx tsc:*)"
+    ]
+  }
+}

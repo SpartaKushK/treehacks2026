@@ -16,6 +16,32 @@ Open [http://localhost:3000](http://localhost:3000) (or whatever port Next.js as
 
 The database auto-seeds on first API request with demo users (pari, alex, dr_smith).
 
+## 🤖 Agent Architecture
+
+The project uses a **class-based hierarchical agent architecture** with specialized sub-agents:
+
+- **PlannerAgent**: Main orchestrator that delegates to sub-agents
+- **HealthAgent**: Analyzes health anomalies and provides summaries
+- **SchedulerAgent**: Manages calendar and appointment booking
+
+**Test it:**
+```bash
+# Test all agents
+npx tsx apps/web/scripts/test-agents.ts all
+
+# Or test individually
+npx tsx apps/web/scripts/test-agents.ts health-agent
+npx tsx apps/web/scripts/test-agents.ts scheduler-agent
+npx tsx apps/web/scripts/test-agents.ts planner-agent
+```
+
+📖 **Documentation:**
+- **[QUICKSTART_AGENTS.md](./QUICKSTART_AGENTS.md)** - Get started in 5 minutes
+- **[AGENT_ARCHITECTURE.md](./AGENT_ARCHITECTURE.md)** - Full architecture overview
+- **[IMPLEMENTATION_SUMMARY.md](./IMPLEMENTATION_SUMMARY.md)** - What's been implemented
+
+> **Note:** Legacy Secretary agent (`lib/secretary/`) is deprecated. Use `lib/agents/` instead.
+
 ## Demos
 
 ### 1. Multi-turn Scheduling Negotiation (pari <> alex)

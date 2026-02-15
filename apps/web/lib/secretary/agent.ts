@@ -1,6 +1,16 @@
 /**
  * Secretary Agent — Core Agent Loop
  *
+ * ⚠️ DEPRECATED: This architecture is replaced by the class-based agent system.
+ * Use lib/agents/PlannerAgent instead.
+ *
+ * Migration path:
+ *   import { PlannerAgent } from "@/lib/agents";
+ *   const planner = new PlannerAgent({ provider: "claude" });
+ *   const result = await planner.run(input, context);
+ *
+ * This file is kept for backward compatibility only.
+ *
  * Implements an LLM agent loop using native function-calling (tool use)
  * for both OpenAI and Anthropic. The loop:
  *
