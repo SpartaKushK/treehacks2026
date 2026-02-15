@@ -160,9 +160,11 @@ model HealthExtraction {
 }
 
 // ── iOS HealthKit upload tables ─────────────────────────────────────
+// These tables are written to via the Supabase client (not Prisma),
+// so IDs must use dbgenerated() for database-level UUID defaults.
 
 model HealthUpload {
-  id         String   @id @default(uuid())
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   deviceId   String   @map("device_id")
   exportDate DateTime @map("export_date")
   createdAt  DateTime @default(now()) @map("created_at")
@@ -181,10 +183,10 @@ model HealthUpload {
 }
 
 model Step {
-  id        String  @id @default(uuid())
-  uploadId  String  @map("upload_id")
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId  String   @map("upload_id") @db.Uuid
   date      DateTime
-  stepCount Float   @map("step_count")
+  stepCount Float    @map("step_count")
 
   upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
 
@@ -193,8 +195,8 @@ model Step {
 }
 
 model HeartRate {
-  id        String   @id @default(uuid())
-  uploadId  String   @map("upload_id")
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId  String   @map("upload_id") @db.Uuid
   startDate DateTime @map("start_date")
   endDate   DateTime @map("end_date")
   bpm       Float
@@ -206,8 +208,8 @@ model HeartRate {
 }
 
 model SleepSample {
-  id         String   @id @default(uuid())
-  uploadId   String   @map("upload_id")
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId   String   @map("upload_id") @db.Uuid
   startDate  DateTime @map("start_date")
   endDate    DateTime @map("end_date")
   sleepStage String   @map("sleep_stage")
@@ -219,8 +221,8 @@ model SleepSample {
 }
 
 model ActiveEnergy {
-  id           String   @id @default(uuid())
-  uploadId     String   @map("upload_id")
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId     String   @map("upload_id") @db.Uuid
   date         DateTime
   kilocalories Float
 
@@ -230,8 +232,8 @@ model ActiveEnergy {
 }
 
 model Distance {
-  id             String   @id @default(uuid())
-  uploadId       String   @map("upload_id")
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId       String   @map("upload_id") @db.Uuid
   date           DateTime
   distanceMeters Float    @map("distance_meters")
 
@@ -241,8 +243,8 @@ model Distance {
 }
 
 model Workout {
-  id                  String   @id @default(uuid())
-  uploadId            String   @map("upload_id")
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId            String   @map("upload_id") @db.Uuid
   startDate           DateTime @map("start_date")
   endDate             DateTime @map("end_date")
   activityType        String   @map("activity_type")
@@ -257,8 +259,8 @@ model Workout {
 }
 
 model Weight {
-  id       String   @id @default(uuid())
-  uploadId String   @map("upload_id")
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId String   @map("upload_id") @db.Uuid
   date     DateTime
   weightKg Float    @map("weight_kg")
 
@@ -268,8 +270,8 @@ model Weight {
 }
 
 model Height {
-  id       String   @id @default(uuid())
-  uploadId String   @map("upload_id")
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId String   @map("upload_id") @db.Uuid
   date     DateTime
   heightCm Float    @map("height_cm")
 
@@ -279,8 +281,8 @@ model Height {
 }
 
 model HealthEvent {
-  id        String   @id @default(uuid())
-  uploadId  String   @map("upload_id")
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  uploadId  String   @map("upload_id") @db.Uuid
   eventType String   @map("event_type")
   startDate DateTime @map("start_date")
   endDate   DateTime @map("end_date")

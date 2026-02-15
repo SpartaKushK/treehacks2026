@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import TopBar from "@/components/TopBar";
 import StatusBadge from "@/components/StatusBadge";
+import { FileText, Activity, AlertTriangle } from "lucide-react";
 
 interface HealthRecord {
   id: string;
@@ -135,7 +136,7 @@ export default function RecordsPage() {
                   onClick={() => setSelectedRecord(isExpanded ? null : record.id)}
                 >
                   <div className="agent-feed-icon">
-                    {record.type === "extraction" ? "+" : record.type === "metric" ? "#" : "!"}
+                    {record.type === "extraction" ? <FileText size={16} /> : record.type === "metric" ? <Activity size={16} /> : <AlertTriangle size={16} />}
                   </div>
                   <div className="agent-feed-body" style={{ flex: 1 }}>
                     <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.375rem", flexWrap: "wrap", alignItems: "center" }}>

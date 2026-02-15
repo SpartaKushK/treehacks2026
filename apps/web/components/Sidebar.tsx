@@ -2,15 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Home, MessageSquare, Users, AlertTriangle, ClipboardList, Calendar, Play, LucideIcon } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Home", icon: "⌂" },
-  { href: "/dashboard/chat", label: "Chat", icon: "◬" },
-  { href: "/dashboard/agents", label: "Care Team", icon: "◉" },
-  { href: "/dashboard/anomaly", label: "Health Alerts", icon: "△" },
-  { href: "/dashboard/records", label: "Health Records", icon: "◫" },
-  { href: "/dashboard/calendar", label: "Schedule", icon: "▦" },
-  { href: "/dashboard/demo", label: "Live Demo", icon: "▷" },
+const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard/agents", label: "Care Team", icon: Users },
+  { href: "/dashboard/anomaly", label: "Health Alerts", icon: AlertTriangle },
+  { href: "/dashboard/records", label: "Health Records", icon: ClipboardList },
+  { href: "/dashboard/calendar", label: "Schedule", icon: Calendar },
+  { href: "/dashboard/demo", label: "Live Demo", icon: Play },
 ];
 
 export default function Sidebar() {
@@ -46,7 +47,7 @@ export default function Sidebar() {
               href={item.href}
               className={`sidebar-link ${active ? "active" : ""}`}
             >
-              <span className="sidebar-icon">{item.icon}</span>
+              <span className="sidebar-icon"><item.icon size={16} /></span>
               {item.label}
             </Link>
           );
