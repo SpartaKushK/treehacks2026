@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Heart, Home, Calendar, Clock, Users, Settings } from "lucide-react";
+import { Heart, Home, Calendar, Clock, Users, Settings, BookOpen, LayoutDashboard } from "lucide-react";
 
 const navItems = [
   { href: "/patient", label: "Home", icon: Home },
   { href: "/patient/health", label: "My Health", icon: Heart },
+  { href: "/patient/evidence", label: "Evidence", icon: BookOpen },
   { href: "/patient/appointments", label: "Doctors", icon: Calendar },
   { href: "/patient/history", label: "Past Days", icon: Clock },
   { href: "/patient/family", label: "Family", icon: Users },
@@ -42,6 +43,14 @@ export default function PatientNav() {
                 </Link>
               );
             })}
+            <Link href="/dashboard" style={{
+              display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", borderRadius: 8,
+              fontSize: 14, fontWeight: 500, textDecoration: "none", transition: "all 0.15s",
+              background: "#f8fafc", color: "#2563eb", borderLeft: "1px solid #e2e8f0", marginLeft: 4,
+            }}>
+              <LayoutDashboard style={{ width: 16, height: 16 }} />
+              <span className="hidden md:inline">Dashboard</span>
+            </Link>
           </div>
         </div>
       </div>

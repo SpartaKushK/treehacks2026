@@ -1,4 +1,4 @@
-/* ── Core domain types for People API ── */
+/* ── Core domain types for CareSync ── */
 
 export interface HumanRecord {
   id: string;

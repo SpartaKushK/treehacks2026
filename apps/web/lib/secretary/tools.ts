@@ -10,6 +10,7 @@ import { handleHealthAnomalyAlert } from "../capabilities/healthAnomalyAlert";
 import { handleTriageIntakeAndSchedule } from "../capabilities/triageIntakeAndSchedule";
 import { handleCapability } from "../people";
 import { findAvailableSlots, bookCalendarEvent, getBusySlots } from "../google-calendar";
+import { lookupClinicalEvidence } from "../clinical/evidenceService";
 import { prisma } from "../store";
 import { addStep } from "../trace";
 import { saveToolInteraction, type AgentType } from "../memory";
@@ -404,11 +405,99 @@ const scheduleAppointment: ToolDefinition = {
 };
 
 /* ------------------------------------------------------------------ */
+/*  Tool: lookup_clinical_evidence                                     */
+/* ------------------------------------------------------------------ */
+
+const lookupClinicalEvidenceTool: ToolDefinition = {
+  name: "lookup_clinical_evidence",
+  description:
+    "Search PubMed medical literature and clinical guidelines for evidence " +
+    "relevant to the patient's health anomaly flags. Returns peer-reviewed " +
+    "studies, clinical guidelines (AHA, CDC, WHO), and drug interaction data " +
+    "from the FDA. Use this AFTER analyze_anomaly and BEFORE triage_patient " +
+    "to ground your triage decisions in clinical evidence.",
+  parameters: {
+    type: "object",
+    properties: {
+      flags: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Anomaly flags from the health alert (e.g. ['RHR_SPIKE', 'SLEEP_DROP'])",
+      },
+      metrics: {
+        type: "object",
+        description: "Current health metrics from the wearable",
+        properties: {
+          sleep_hours: { type: "number" },
+          resting_hr_bpm: { type: "number" },
+          steps: { type: "number" },
+          hrv_ms: { type: "number" },
+        },
+      },
+      medications: {
+        type: "array",
+        items: { type: "string" },
+        description:
+          "Optional list of patient medications to check for drug interactions via FDA data",
+      },
+    },
+    required: ["flags"],
+  },
+
+  async execute(args, ctx) {
+    const flags = (args.flags as string[]) || [];
+    const metrics = (args.metrics as Record<string, unknown>) || {};
+    const medications = (args.medications as string[]) || [];
+
+    addStep(ctx.traceId, {
+      actor: "clinical_evidence_agent",
+      event: "EVIDENCE_LOOKUP_START",
+      ok: true,
+      data: { flags, medicationCount: medications.length },
+    });
+
+    const evidence = await lookupClinicalEvidence({ flags, metrics, medications });
+
+    addStep(ctx.traceId, {
+      actor: "clinical_evidence_agent",
+      event: "EVIDENCE_FOUND",
+      ok: true,
+      data: {
+        studyCount: evidence.studies.length,
+        guidelineCount: evidence.guidelines.length,
+        drugInteractionCount: evidence.drugInteractions.length,
+      },
+    });
+
+    return {
+      error: false,
+      studies: evidence.studies.map((s) => ({
+        title: s.title,
+        authors: s.authors,
+        pmid: s.pmid,
+        url: s.url,
+        journal: s.journal,
+        year: s.year,
+      })),
+      guidelines: evidence.guidelines.map((g) => ({
+        condition: g.condition,
+        recommendation: g.recommendation,
+        source: g.source,
+      })),
+      drug_interactions: evidence.drugInteractions,
+      patient_summary: evidence.patientFriendlySummary,
+    };
+  },
+};
+
+/* ------------------------------------------------------------------ */
 /*  Export all tools                                                    */
 /* ------------------------------------------------------------------ */
 
 export const ALL_TOOLS: ToolDefinition[] = [
   analyzeAnomaly,
+  lookupClinicalEvidenceTool,
   triagePatient,
   getHealthSummary,
   scheduleAppointment,

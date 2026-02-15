@@ -1,175 +1,138 @@
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@clerk/nextjs/server";
-import { getCurrentUser } from "@/lib/auth";
+import { query, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import {
-  getOrCreateConversation,
-  getHistory,
-  formatHistoryForLLM,
-  addMessage,
-} from "@/lib/memory";
+  healthcareServer,
+  setActiveContext,
+} from "@/lib/secretary/healthcareMcpServer";
+import { SECRETARY_SYSTEM_PROMPT } from "@/lib/secretary/prompts";
+import { startTrace, addStep, finalizeTrace } from "@/lib/trace";
+import { preToolUseHook, postToolUseHook } from "@/lib/secretary/traceHooks";
 
-const SYSTEM_PROMPT = `You are a helpful personal AI assistant. You are friendly, concise, and helpful. You can help with a wide range of tasks including answering questions, brainstorming, writing, analysis, and more. Keep your responses clear and well-structured.`;
+export const runtime = "nodejs";
 
+/**
+ * POST /api/chat
+ *
+ * Multi-turn patient conversation endpoint powered by the Claude Agent SDK.
+ * Supports session resumption for continuous conversations.
+ *
+ * Body:
+ * {
+ *   "message": "string",             // Required: patient's message
+ *   "sessionId": "string",           // Optional: resume previous session
+ *   "patientHandle": "string"        // Optional: patient identifier
+ * }
+ *
+ * Response:
+ * {
+ *   "response": "string",
+ *   "sessionId": "string",
+ *   "traceId": "string"
+ * }
+ */
 export async function POST(req: NextRequest) {
   try {
-    // First check Clerk session — this covers signed-in users who may not
-    // have a Human agent yet (getCurrentUser requires a linked Human row).
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+    const body = await req.json();
+    const { message, sessionId, patientHandle } = body;
+
+    if (!message || typeof message !== "string") {
+      return NextResponse.json(
+        { error: "Missing or invalid 'message' field." },
+        { status: 400 }
+      );
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "ANTHROPIC_API_KEY is not configured" },
-        { status: 500 },
+        { error: "ANTHROPIC_API_KEY not configured." },
+        { status: 503 }
       );
     }
 
-    const { message } = await req.json();
-    if (!message || typeof message !== "string") {
-      return NextResponse.json(
-        { error: "message is required" },
-        { status: 400 },
-      );
-    }
-
-    // Use the agent handle if available, otherwise fall back to Clerk user ID
-    const user = await getCurrentUser();
-    const handle = user?.handle ?? userId;
-    const convoId = await getOrCreateConversation("chat", handle);
-
-    // Persist user message
-    await addMessage(convoId, {
-      role: "user",
-      content: message,
-      metadata: { timestamp: new Date().toISOString() },
+    const traceId = startTrace({
+      provider: "claude",
+      title: `Chat: ${patientHandle || "patient"}`,
     });
 
-    // Build messages array for Anthropic
-    const history = await getHistory("chat", handle);
-    const formatted = formatHistoryForLLM(history);
+    setActiveContext({ traceId, provider: "claude" });
 
-    // Merge consecutive same-role messages to avoid Anthropic 400 errors
-    const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
-    for (const msg of formatted) {
-      const last = messages[messages.length - 1];
-      if (last && last.role === msg.role) {
-        last.content += "\n\n" + msg.content;
-      } else {
-        messages.push({ ...msg });
-      }
-    }
+    let response = "";
+    let newSessionId = sessionId;
 
-    // Ensure conversation starts with a user message
-    if (messages.length > 0 && messages[0].role === "assistant") {
-      messages.shift();
-    }
+    try {
+      const q = query({
+        prompt: message,
+        options: {
+          systemPrompt: SECRETARY_SYSTEM_PROMPT,
+          model: "claude-sonnet-4-5-20250929",
+          maxTurns: 5,
+          persistSession: true,
+          ...(sessionId ? { resume: sessionId } : {}),
+          mcpServers: { healthcare: healthcareServer },
+          allowedTools: [
+            "mcp__healthcare__analyze_anomaly",
+            "mcp__healthcare__lookup_clinical_evidence",
+            "mcp__healthcare__triage_patient",
+            "mcp__healthcare__get_health_summary",
+            "mcp__healthcare__schedule_appointment",
+            "WebSearch",
+          ],
+          tools: [],
+          permissionMode: "bypassPermissions",
+          allowDangerouslySkipPermissions: true,
+          hooks: {
+            PreToolUse: [{ hooks: [preToolUseHook] }],
+            PostToolUse: [{ hooks: [postToolUseHook] }],
+          },
+        },
+      });
 
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-5-20250929",
-        max_tokens: 2048,
-        stream: true,
-        system: SYSTEM_PROMPT,
-        messages,
-      }),
-    });
-
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      console.error("[POST /api/chat] Anthropic error:", errText);
-      return NextResponse.json(
-        { error: "Anthropic API error", detail: errText },
-        { status: anthropicRes.status },
-      );
-    }
-
-    // Stream Anthropic SSE through to the client
-    let fullText = "";
-    const reader = anthropicRes.body!.getReader();
-    const decoder = new TextDecoder();
-
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          let buffer = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            // Keep the last potentially incomplete line in the buffer
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6);
-                if (data === "[DONE]") continue;
-                try {
-                  const parsed = JSON.parse(data);
-                  if (
-                    parsed.type === "content_block_delta" &&
-                    parsed.delta?.type === "text_delta"
-                  ) {
-                    fullText += parsed.delta.text;
-                  }
-                } catch {
-                  // skip non-JSON lines
-                }
-              }
-              // Forward the raw line to the client
-              controller.enqueue(
-                new TextEncoder().encode(line + "\n"),
-              );
-            }
-          }
-          // Flush remaining buffer
-          if (buffer.trim()) {
-            controller.enqueue(
-              new TextEncoder().encode(buffer + "\n"),
-            );
-          }
-          controller.close();
-        } catch (err) {
-          console.error("[POST /api/chat] stream error:", err);
-          controller.error(err);
-        } finally {
-          // Persist assistant response
-          if (fullText) {
-            await addMessage(convoId, {
-              role: "assistant",
-              content: fullText,
-              metadata: { timestamp: new Date().toISOString() },
-            });
+      for await (const msg of q) {
+        if (
+          msg.type === "system" &&
+          "subtype" in msg &&
+          msg.subtype === "init"
+        ) {
+          const initMsg = msg as SDKMessage & { session_id: string };
+          newSessionId = initMsg.session_id;
+        }
+        if (msg.type === "result") {
+          const resultMsg = msg as SDKMessage & {
+            subtype: string;
+            result?: string;
+          };
+          if (resultMsg.subtype === "success" && resultMsg.result) {
+            response = resultMsg.result;
           }
         }
-      },
-    });
+      }
 
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
+      await finalizeTrace(traceId);
+
+      return NextResponse.json({
+        response: response || "I couldn't generate a response. Please try again.",
+        sessionId: newSessionId,
+        traceId,
+      });
+    } catch (err) {
+      console.error("[/api/chat] Agent SDK error:", err);
+      await finalizeTrace(traceId);
+      return NextResponse.json(
+        {
+          error:
+            err instanceof Error ? err.message : "Internal server error",
+        },
+        { status: 500 }
+      );
+    } finally {
+      setActiveContext(null);
+    }
   } catch (err) {
-    console.error("[POST /api/chat]", err);
+    console.error("[/api/chat] Parse error:", err);
     return NextResponse.json(
-      {
-        error: "server_error",
-        message: err instanceof Error ? err.message : "Unknown error",
-      },
-      { status: 500 },
+      { error: "Invalid request body" },
+      { status: 400 }
     );
   }
 }

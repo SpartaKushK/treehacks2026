@@ -336,7 +336,7 @@ export default function AgentConfigPage() {
   if (loading) {
     return (
       <>
-        <TopBar title="Agent Config" />
+        <TopBar title="Care Agent Profile" />
         <div className="dashboard-content" style={{ textAlign: "center", padding: "3rem" }}>
           <span className="spinner" />
         </div>
@@ -347,12 +347,12 @@ export default function AgentConfigPage() {
   if (!config) {
     return (
       <>
-        <TopBar title="Agent Config" />
+        <TopBar title="Care Agent Profile" />
         <div className="dashboard-content">
           <div className="card">
             <p style={{ color: "var(--red)" }}>Agent not found or you don&apos;t own this agent.</p>
             <button className="btn btn-secondary" onClick={() => router.push("/dashboard/agents")} style={{ marginTop: "1rem" }}>
-              Back to Agents
+              Back to Care Team
             </button>
           </div>
         </div>
@@ -410,7 +410,7 @@ export default function AgentConfigPage() {
                 <div className="agent-bio">
                   {config.personaPrompt
                     ? config.personaPrompt.slice(0, 120) + (config.personaPrompt.length > 120 ? "..." : "")
-                    : "Canonical AI agent endpoint — negotiates, transacts, and coordinates on your behalf."}
+                    : "AI care agent — monitors health, coordinates appointments, and keeps your care team connected."}
                 </div>
                 <div className="agent-meta-row">
                   <span className={`badge ${config.agentType === "doctor" ? "badge-red" : "badge-blue"}`}>
@@ -425,7 +425,7 @@ export default function AgentConfigPage() {
 
             {/* Endpoint */}
             <div className="agent-endpoint">
-              <div className="agent-endpoint-label">Canonical Agent Endpoint</div>
+              <div className="agent-endpoint-label">Care Agent Endpoint</div>
               <div className="agent-endpoint-row">
                 <span className="agent-endpoint-url">{config.endpointUrl}</span>
                 <button className="agent-copy-btn" onClick={copyEndpoint}>
@@ -576,8 +576,8 @@ export default function AgentConfigPage() {
         <div className="agent-cap-grid">
           {/* Personal capabilities */}
           <div className="agent-cap-col">
-            <div className="agent-col-title">What Your Agent Does For You</div>
-            <div className="agent-col-sub">Capabilities executed on your behalf</div>
+            <div className="agent-col-title">How This Agent Cares For You</div>
+            <div className="agent-col-sub">Services this agent provides for your patient</div>
             {PERSONAL_CAPABILITIES.map((cap) => {
               const enabled = enabledCaps.has(cap.name);
               const policy = getPolicy(cap.name);
@@ -625,8 +625,8 @@ export default function AgentConfigPage() {
 
           {/* Public capabilities */}
           <div className="agent-cap-col">
-            <div className="agent-col-title">What You Offer the Network</div>
-            <div className="agent-col-sub">Capabilities visible to other agents</div>
+            <div className="agent-col-title">What You Share With Other Care Providers</div>
+            <div className="agent-col-sub">Data and services accessible to your care network</div>
             {PUBLIC_CAPABILITIES.map((cap) => {
               const enabled = enabledCaps.has(cap.name);
               const policy = getPolicy(cap.name);
@@ -966,7 +966,7 @@ export default function AgentConfigPage() {
 
         {/* ── FOOTER ── */}
         <div className="agent-footer">
-          {config.endpointUrl} &middot; Protocol v2.4.1
+          {config.endpointUrl} &middot; CareSync v2.4.1
         </div>
 
       </div>

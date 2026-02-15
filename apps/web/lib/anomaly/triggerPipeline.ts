@@ -5,12 +5,14 @@ import { handleCapability } from "../people";
 import { evaluatePolicy } from "../policy";
 import { startTrace, addStep, addChildCall, finalizeTrace } from "../trace";
 import { ensureSeed } from "../ensureSeed";
+import { lookupClinicalEvidence, type ClinicalEvidence } from "../clinical/evidenceService";
 import type { HealthAnomalyAlert, PatientDecision, TriageRequest, TriageOutcome } from "@people/shared";
 
 export interface PipelineResult {
   traceId: string;
   decision: PatientDecision;
   triageOutcome: TriageOutcome | null;
+  evidence: ClinicalEvidence | null;
 }
 
 /**
@@ -94,6 +96,39 @@ export async function triggerAnomalyPipeline(
   }
 
   const { decision } = result.data as { decision: PatientDecision };
+
+  // Lookup clinical evidence for the anomaly flags
+  let evidence: ClinicalEvidence | null = null;
+  try {
+    addStep(traceId, {
+      actor: "clinical_evidence_agent",
+      event: "EVIDENCE_LOOKUP_START",
+      ok: true,
+      data: { flags: anomaly.flags },
+    });
+
+    evidence = await lookupClinicalEvidence({
+      flags: anomaly.flags,
+      metrics: anomaly.metrics as Record<string, unknown>,
+    });
+
+    addStep(traceId, {
+      actor: "clinical_evidence_agent",
+      event: "EVIDENCE_FOUND",
+      ok: true,
+      data: {
+        studyCount: evidence.studies.length,
+        guidelineCount: evidence.guidelines.length,
+      },
+    });
+  } catch {
+    addStep(traceId, {
+      actor: "clinical_evidence_agent",
+      event: "EVIDENCE_LOOKUP_FAILED",
+      ok: false,
+      data: {},
+    });
+  }
 
   // If escalation needed, call dr_smith's triage capability
   let triageOutcome: TriageOutcome | null = null;
@@ -191,9 +226,10 @@ export async function triggerAnomalyPipeline(
       flagsJson: JSON.stringify(anomaly.flags),
       decisionJson: JSON.stringify(decision),
       triageOutcomeJson: triageOutcome ? JSON.stringify(triageOutcome) : null,
+      evidenceJson: evidence ? JSON.stringify(evidence) : null,
       status: "active",
     },
   });
 
-  return { traceId, decision, triageOutcome };
+  return { traceId, decision, triageOutcome, evidence };
 }

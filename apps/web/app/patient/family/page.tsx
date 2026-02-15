@@ -42,7 +42,22 @@ export default function FamilyDashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold" style={{ color: "#0f172a" }}>{data.name}&apos;s Health</h1>
+      <h1 className="text-3xl font-bold" style={{ color: "#0f172a" }}>{data.name}&apos;s Wellbeing</h1>
+
+      <Card style={{ border: "2px solid #bbf7d0", borderRadius: 16, background: "#f0fdf4" }}>
+        <CardContent className="p-5">
+          <p className="text-base font-medium" style={{ color: "#166534" }}>
+            {data.heartRate > 90
+              ? `${data.name}\u2019s heart rate is a bit elevated at ${data.heartRate} bpm. We\u2019re keeping an eye on it.`
+              : data.sleepHours < 5
+              ? `${data.name} didn\u2019t sleep as well last night (${data.sleepHours} hrs). CareSync is monitoring for patterns.`
+              : `${data.name} is doing well today. Heart rate is steady at ${data.heartRate} bpm, sleep was ${data.sleepHours} hours, and she\u2019s been active with ${data.steps.toLocaleString()} steps.`}
+          </p>
+          <p className="text-sm mt-2" style={{ color: "#15803d" }}>
+            CareSync is monitoring 24/7. You&apos;ll be the first to know if anything changes.
+          </p>
+        </CardContent>
+      </Card>
 
       <div className="grid grid-cols-3 gap-4">
         {[{ icon: Heart, color: "#ef4444", val: data.heartRate, unit: "bpm", label: "Heart" },
@@ -61,7 +76,7 @@ export default function FamilyDashboardPage() {
       <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
         <CardContent className="p-6">
           <h2 className="text-lg font-bold flex items-center gap-2 mb-4" style={{ color: "#1e293b" }}>
-            <Bell className="w-5 h-5" style={{ color: "#d97706" }} /> Recent Alerts
+            <Bell className="w-5 h-5" style={{ color: "#d97706" }} /> Recent Updates
           </h2>
           <div className="space-y-3">
             {data.alerts.map((a, i) => (

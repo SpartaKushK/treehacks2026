@@ -47,7 +47,7 @@ export default function AnomalyDrillDown() {
   if (loading) {
     return (
       <>
-        <TopBar title="Trace Details" />
+        <TopBar title="Alert Details" />
         <div className="dashboard-content" style={{ textAlign: "center", padding: "3rem" }}>
           <span className="spinner" />
         </div>
@@ -58,7 +58,7 @@ export default function AnomalyDrillDown() {
   if (!trace) {
     return (
       <>
-        <TopBar title="Trace Details" />
+        <TopBar title="Alert Details" />
         <div className="dashboard-content">
           <div
             style={{
@@ -93,7 +93,7 @@ export default function AnomalyDrillDown() {
           onClick={() => router.push("/dashboard/anomaly")}
           style={{ marginBottom: "1.5rem", padding: "0.375rem 0.875rem", fontSize: "0.7rem" }}
         >
-          &larr; BACK TO ANOMALY DASHBOARD
+          &larr; BACK TO HEALTH ALERTS
         </button>
 
         {/* Trace hero/metadata */}
@@ -157,7 +157,7 @@ export default function AnomalyDrillDown() {
         {anomalyStep && (
           <>
             <div className="agent-section-header">
-              <span className="agent-section-title">Anomaly Data</span>
+              <span className="agent-section-title">Health Data Snapshot</span>
               <span className="agent-section-line" />
             </div>
             <div style={{ marginBottom: "1.5rem" }}>
@@ -170,7 +170,7 @@ export default function AnomalyDrillDown() {
         {decisionStep && (
           <>
             <div className="agent-section-header">
-              <span className="agent-section-title">Patient Decision</span>
+              <span className="agent-section-title">Care Agent Assessment</span>
               <span className="agent-section-line" />
             </div>
             <div style={{ marginBottom: "1.5rem" }}>
@@ -240,7 +240,7 @@ export default function AnomalyDrillDown() {
 
         {/* Full trace timeline */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Full Trace</span>
+          <span className="agent-section-title">Full Activity Log</span>
           <span className="agent-section-line" />
           <span className="agent-section-count">{trace.steps.length} steps</span>
         </div>
@@ -255,7 +255,7 @@ export default function AnomalyDrillDown() {
           <TraceViewer steps={trace.steps} provider={trace.provider} />
         </div>
 
-        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
+        <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>
       </div>
     </>
   );

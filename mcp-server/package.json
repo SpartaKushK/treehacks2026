@@ -1,0 +1,21 @@
+{
+  "name": "caresync-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for CareSync healthcare agent platform — exposes health tools via Poke",
+  "type": "module",
+  "scripts": {
+    "dev": "npx tsx server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "poke": "^0.2.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

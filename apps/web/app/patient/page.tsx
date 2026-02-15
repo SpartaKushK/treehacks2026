@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Heart, Activity, Calendar, Moon, Users, Bell } from "lucide-react";
+import { Heart, Activity, Calendar, Moon, Users, Bell, Phone } from "lucide-react";
 
 export default function PatientLanding() {
   const quickLinks = [
@@ -35,8 +35,14 @@ export default function PatientLanding() {
         ))}
       </div>
 
+      <Link href="/patient/call">
+        <Button size="xl" className="w-full" style={{ background: "#16a34a", color: "white", fontSize: 18, borderRadius: 14, height: 56 }}>
+          <Phone className="w-6 h-6 mr-2" /> Talk to Doctor
+        </Button>
+      </Link>
+
       <Link href="/patient/onboarding">
-        <Button size="xl" className="w-full" style={{ background: "#2563eb", color: "white", fontSize: 18, borderRadius: 14, height: 56 }}>
+        <Button size="xl" variant="outline" className="w-full" style={{ fontSize: 18, borderRadius: 14, height: 56 }}>
           Set Up New Device
         </Button>
       </Link>

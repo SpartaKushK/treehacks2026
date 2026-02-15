@@ -19,8 +19,8 @@ export default function AgentCard({ handle, displayName, capabilityCount, llmPro
             src={avatarUrl}
             alt={displayName}
             style={{
-              width: 48, height: 48, borderRadius: "50%",
-              objectFit: "cover", border: "2px solid var(--accent)",
+              width: 48, height: 48, borderRadius: 14,
+              objectFit: "cover", border: "2px solid #F5EDE3",
               flexShrink: 0,
             }}
           />
