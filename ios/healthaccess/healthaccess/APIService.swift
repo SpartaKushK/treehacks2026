@@ -72,6 +72,37 @@ struct APIService {
     /// The agent handle to associate this device's data with
     static var userHandle = "pari"
 
+    /// Send a synthetic "bad" health payload to trigger the anomaly pipeline (demo only).
+    @discardableResult
+    static func triggerDemoAlert() async throws -> UploadResponse {
+        let now = Date()
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+
+        let payload = HealthDataPayload(
+            exportDate: now,
+            steps: [StepData(date: yesterday, stepCount: 800)],           // very low steps
+            heartRates: [
+                HeartRateData(startDate: yesterday, endDate: yesterday, bpm: 105),  // elevated HR
+                HeartRateData(startDate: now, endDate: now, bpm: 98),
+            ],
+            sleepSamples: [
+                SleepData(startDate: yesterday, endDate: yesterday.addingTimeInterval(2.5 * 3600), sleepStage: "core"),  // only 2.5h sleep
+            ],
+            activeEnergy: [ActiveEnergyData(date: yesterday, kilocalories: 50)],
+            distances: [DistanceData(date: yesterday, distanceMeters: 200)],
+            workouts: [],
+            weights: [],
+            heights: [],
+            healthEvents: [
+                HealthEvent(eventType: "HKCategoryTypeIdentifierIrregularHeartRhythmEvent",
+                            startDate: yesterday, endDate: yesterday),
+                HealthEvent(eventType: "HKCategoryTypeIdentifierHighHeartRateEvent",
+                            startDate: now, endDate: now),
+            ]
+        )
+        return try await uploadHealthData(payload)
+    }
+
     /// Upload a HealthKit payload to the server. Returns the parsed response
     /// containing the upload ID and any anomaly results.
     @discardableResult
