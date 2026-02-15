@@ -1,8 +1,8 @@
 import PatientNav from "./components/PatientNav";
 
 export const metadata = {
-  title: "CareSync — Health Management Made Simple",
-  description: "We manage your health, so you don't have to.",
+  title: "Health Assistant — Your Personal Care Helper",
+  description: "Making healthcare simple and easy for you.",
 };
 
 export default function PatientLayout({

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/store";
 import crypto from "crypto";
 
+export const dynamic = "force-dynamic";
+
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
 export async function GET(req: NextRequest) {

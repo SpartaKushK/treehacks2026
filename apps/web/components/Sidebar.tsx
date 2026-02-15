@@ -2,14 +2,17 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Home, MessageSquare, Users, AlertTriangle, ClipboardList, Calendar, Play, Mic, LucideIcon } from "lucide-react";
 
-const NAV_ITEMS = [
-  { href: "/dashboard", label: "Home", icon: "⌂" },
-  { href: "/dashboard/chat", label: "Chat", icon: "◬" },
-  { href: "/dashboard/agents", label: "Care Team", icon: "◉" },
-  { href: "/dashboard/anomaly", label: "Health Alerts", icon: "△" },
-  { href: "/dashboard/calendar", label: "Schedule", icon: "▦" },
-  { href: "/dashboard/demo", label: "Live Demo", icon: "▷" },
+const NAV_ITEMS: { href: string; label: string; icon: LucideIcon }[] = [
+  { href: "/dashboard", label: "Home", icon: Home },
+  { href: "/dashboard/chat", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard/agents", label: "Care Team", icon: Users },
+  { href: "/dashboard/anomaly", label: "Patient Alerts", icon: AlertTriangle },
+  { href: "/dashboard/records", label: "Health Records", icon: ClipboardList },
+  { href: "/dashboard/calendar", label: "Schedule", icon: Calendar },
+  { href: "/dashboard/voice-demo", label: "Voice AI Demo", icon: Mic },
+  { href: "/dashboard/demo", label: "Live Demo", icon: Play },
 ];
 
 export default function Sidebar() {
@@ -29,7 +32,7 @@ export default function Sidebar() {
           </div>
           <div>
             <strong>CareSync</strong>
-            <span className="sidebar-logo-sub">Elderly Care Platform</span>
+            <span className="sidebar-logo-sub">Clinical Dashboard</span>
           </div>
         </Link>
       </div>
@@ -45,7 +48,7 @@ export default function Sidebar() {
               href={item.href}
               className={`sidebar-link ${active ? "active" : ""}`}
             >
-              <span className="sidebar-icon">{item.icon}</span>
+              <span className="sidebar-icon"><item.icon size={16} /></span>
               {item.label}
             </Link>
           );

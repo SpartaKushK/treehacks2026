@@ -5,6 +5,8 @@ import { ensureSeed } from "@/lib/ensureSeed";
 import { toHex } from "@/lib/crypto";
 import nacl from "tweetnacl";
 
+export const dynamic = "force-dynamic";
+
 /** GET /api/agents — list current user's agents + unclaimed demo agents */
 export async function GET() {
   try {
@@ -39,7 +41,7 @@ export async function POST(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const body = await req.json();
-  const { handle, displayName, claim } = body;
+  const { handle, displayName, claim, heygenAvatarId, avatarPhotoUrl } = body;
 
   if (!handle) return NextResponse.json({ error: "handle_required" }, { status: 400 });
 
@@ -75,6 +77,8 @@ export async function POST(req: NextRequest) {
       publicKey: toHex(kp.publicKey),
       endpointUrl: `${baseUrl}/api/u/${handle}`,
       clerkUserId: userId,
+      heygenAvatarId: heygenAvatarId || null,
+      avatarPhotoUrl: avatarPhotoUrl || null,
     },
   });
 

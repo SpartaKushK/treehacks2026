@@ -12,9 +12,30 @@ const CLASS_MAP: Record<string, string> = {
   routine: "badge-green",
 };
 
+// Add icon map for non-color identification (accessibility)
+const ICON_MAP: Record<string, string> = {
+  active: "⚠",
+  resolved: "✓",
+  dismissed: "−",
+  urgent: "!",
+  soon: "○",
+  routine: "✓",
+};
+
 export default function StatusBadge({ status, label }: Props) {
   return (
-    <span className={`badge ${CLASS_MAP[status] || "badge-blue"}`}>
+    <span
+      className={`badge ${CLASS_MAP[status] || "badge-blue"}`}
+      style={{
+        fontSize: "0.8125rem",      // Explicit override for accessibility
+        fontWeight: 700,
+        lineHeight: "1.4",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.25rem",
+      }}
+    >
+      <span aria-hidden="true">{ICON_MAP[status]}</span>
       {label || status.toUpperCase()}
     </span>
   );

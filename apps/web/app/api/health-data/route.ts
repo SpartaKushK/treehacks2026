@@ -24,9 +24,15 @@ interface HealthDataPayload {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const body: HealthDataPayload & { deviceId?: string; userHandle?: string } = await req.json();
+  let body: HealthDataPayload & { deviceId?: string; userHandle?: string };
 
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  try {
     const deviceId = body.deviceId ?? "unknown";
 
     // 1. Create upload record
@@ -39,7 +45,7 @@ export async function POST(req: NextRequest) {
     if (uploadErr || !upload) {
       console.error("Failed to create upload:", uploadErr);
       return NextResponse.json(
-        { error: "Failed to create upload record" },
+        { error: "Failed to create upload record", details: uploadErr?.message ?? uploadErr },
         { status: 500 }
       );
     }
@@ -192,9 +198,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("Health data upload error:", err);
+    const message = err instanceof Error ? err.message : "Unknown server error";
     return NextResponse.json(
-      { error: "Invalid request body" },
-      { status: 400 }
+      { error: message },
+      { status: 500 }
     );
   }
 }

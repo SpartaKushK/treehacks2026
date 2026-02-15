@@ -88,20 +88,22 @@ export default function EmergencyAlertPage() {
   const avatarText = `Hi dear, I noticed your ${alert.title.toLowerCase()} is a little different today. ${alert.detail}${guidelineSnippet}${studySnippet} But there's nothing for you to worry about right now — your family has been notified, your health data has been recorded, and we've already booked a doctor's appointment for you. Everything is being taken care of.`;
 
   return (
-    <div className="space-y-6">
-      <Card style={{ border: `2px solid ${isUrgent ? "#fecaca" : "#fde68a"}`, borderRadius: 16, background: isUrgent ? "#fef2f2" : "#fffbeb" }}>
-        <CardContent className="p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <AlertTriangle className="w-6 h-6" style={{ color: isUrgent ? "#dc2626" : "#d97706" }} />
-            <h1 className="text-2xl font-bold" style={{ color: isUrgent ? "#991b1b" : "#92400e" }}>{alert.title}</h1>
+    <div className="space-y-8" style={{ padding: "0.5rem" }}>
+      <Card style={{ border: `4px solid ${isUrgent ? "#fca5a5" : "#fcd34d"}`, borderRadius: 24, background: isUrgent ? "#fef2f2" : "#fffbeb", boxShadow: "0 4px 12px rgba(0,0,0,0.1)" }}>
+        <CardContent className="p-8">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: isUrgent ? "#fee2e2" : "#fef3c7" }}>
+              <AlertTriangle className="w-8 h-8" style={{ color: isUrgent ? "#dc2626" : "#d97706" }} />
+            </div>
+            <h1 className="font-bold" style={{ color: isUrgent ? "#991b1b" : "#92400e", fontSize: "2rem", lineHeight: 1.2 }}>Important: {alert.title}</h1>
           </div>
-          <p className="text-lg" style={{ color: "#475569" }}>{alert.detail}</p>
+          <p style={{ color: "#1e293b", fontSize: "1.375rem", lineHeight: 1.6 }}>{alert.detail}</p>
         </CardContent>
       </Card>
 
-      <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-        <CardContent className="p-6 flex flex-col items-center">
-          <h2 className="font-bold mb-4" style={{ color: "#1e293b" }}>{GRANDMA_PROFILE.name}</h2>
+      <Card style={{ border: "3px solid #e2e8f0", borderRadius: 24 }}>
+        <CardContent className="p-8 flex flex-col items-center">
+          <h2 className="font-bold mb-5" style={{ color: "#1e293b", fontSize: "1.5rem" }}>Your Health Assistant</h2>
           <StreamingAvatar
             ref={avatarRef}
             avatarId={GRANDMA_PROFILE.avatarId}
@@ -147,34 +149,34 @@ export default function EmergencyAlertPage() {
         </Card>
       )}
 
-      <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-        <CardContent className="p-6">
-          <h2 className="font-bold mb-4" style={{ color: "#1e293b" }}>What We&apos;ve Done For You</h2>
-          <div className="space-y-3">
+      <Card style={{ border: "3px solid #e2e8f0", borderRadius: 24 }}>
+        <CardContent className="p-8">
+          <h2 className="font-bold mb-6" style={{ color: "#1e293b", fontSize: "1.5rem" }}>What We've Done For You</h2>
+          <div className="space-y-5">
             {alert.actions.map((a, i) => (
-              <div key={i} className="flex items-center gap-3">
-                <CheckCircle className="w-5 h-5" style={{ color: a.done ? "#16a34a" : "#cbd5e1" }} />
-                <p style={{ color: a.done ? "#1e293b" : "#94a3b8" }}>{a.label}</p>
+              <div key={i} className="flex items-center gap-4">
+                <CheckCircle className="w-7 h-7" style={{ color: a.done ? "#16a34a" : "#cbd5e1" }} />
+                <p style={{ color: a.done ? "#1e293b" : "#94a3b8", fontSize: "1.125rem" }}>{a.label}</p>
               </div>
             ))}
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Button size="xl" variant="outline" className="w-full" style={{ fontSize: 18, height: 56, borderRadius: 14, border: "2px solid #bbf7d0", color: "#166534" }}>
-          <CheckCircle className="w-6 h-6 mr-2" /> I&apos;m OK
+      <div className="grid grid-cols-2 gap-5">
+        <Button size="xl" variant="outline" className="w-full shadow-md" style={{ fontSize: "1.25rem", height: 72, borderRadius: 18, border: "3px solid #bbf7d0", color: "#166534", fontWeight: 600 }}>
+          <CheckCircle className="w-7 h-7 mr-2" /> I'm OK
         </Button>
         <a href="tel:911">
-          <Button size="xl" className="w-full" style={{ background: "#dc2626", color: "white", fontSize: 18, height: 56, borderRadius: 14 }}>
-            <Phone className="w-6 h-6 mr-2" /> Call 911
+          <Button size="xl" className="w-full shadow-lg" style={{ background: "#dc2626", color: "white", fontSize: "1.25rem", height: 72, borderRadius: 18, fontWeight: 600 }}>
+            <Phone className="w-7 h-7 mr-2" /> Call 911
           </Button>
         </a>
       </div>
 
       <Link href="/patient/booking">
-        <Button variant="outline" size="lg" className="w-full" style={{ fontSize: 16, borderRadius: 12, height: 48 }}>
-          <Calendar className="w-5 h-5 mr-2" /> View Appointment
+        <Button variant="outline" size="lg" className="w-full" style={{ fontSize: "1.125rem", borderRadius: 16, height: 64, borderWidth: 2 }}>
+          <Calendar className="w-6 h-6 mr-2" /> View My Appointment
         </Button>
       </Link>
     </div>

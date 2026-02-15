@@ -5,6 +5,76 @@ import { useRouter } from "next/navigation";
 import TopBar from "@/components/TopBar";
 import StatusBadge from "@/components/StatusBadge";
 
+// Mock data for when no real data is available
+const MOCK_LIVE_DATA = [
+  {
+    handle: "demo_patient_1",
+    displayName: "Sarah Johnson (Example)",
+    avatarPhotoUrl: null,
+    latestMetrics: { sleepHours: 7.2, steps: 5800, symptomScore: 3.1 },
+    anomalyScore: 25,
+    activeAlertCount: 0,
+    urgency: "routine" as const,
+  },
+  {
+    handle: "demo_patient_2",
+    displayName: "Robert Chen (Example)",
+    avatarPhotoUrl: null,
+    latestMetrics: { sleepHours: 6.5, steps: 4200, symptomScore: 4.3 },
+    anomalyScore: 42,
+    activeAlertCount: 1,
+    urgency: "soon" as const,
+  },
+  {
+    handle: "demo_patient_3",
+    displayName: "Margaret Wilson (Example)",
+    avatarPhotoUrl: null,
+    latestMetrics: { sleepHours: 8.1, steps: 6500, symptomScore: 2.5 },
+    anomalyScore: 18,
+    activeAlertCount: 0,
+    urgency: "routine" as const,
+  },
+];
+
+const MOCK_ALERTS = [
+  {
+    id: "mock-1",
+    traceId: null,
+    severity: "urgent",
+    anomalyScore: 85,
+    flagsJson: JSON.stringify(["SLEEP_DROP", "RHR_SPIKE"]),
+    decisionJson: JSON.stringify({
+      summary_explanation: "Patient sleep dropped to 4 hours (usual: 7.5 hours). Heart rate elevated above normal range. Recommend follow-up call.",
+    }),
+    status: "active",
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: "mock-2",
+    traceId: null,
+    severity: "soon",
+    anomalyScore: 62,
+    flagsJson: JSON.stringify(["ACTIVITY_DROP"]),
+    decisionJson: JSON.stringify({
+      summary_explanation: "Daily step count below 2000 for 3 consecutive days (usual: 5000 steps). May indicate reduced mobility or engagement.",
+    }),
+    status: "active",
+    createdAt: new Date(Date.now() - 172800000).toISOString(),
+  },
+  {
+    id: "mock-3",
+    traceId: null,
+    severity: "routine",
+    anomalyScore: 45,
+    flagsJson: JSON.stringify(["SYMPTOM_INCREASE"]),
+    decisionJson: JSON.stringify({
+      summary_explanation: "Reported symptom severity increased from 2.0 to 4.5. Patient mentioned increased joint pain. Monitor for trends.",
+    }),
+    status: "resolved",
+    createdAt: new Date(Date.now() - 259200000).toISOString(),
+  },
+];
+
 interface LiveMetrics {
   handle: string;
   displayName: string;
@@ -82,14 +152,14 @@ export default function AnomalyPage() {
 
   return (
     <>
-      <TopBar title="Health Alerts" />
+      <TopBar title="Patient Alerts" />
       <div className="dashboard-content">
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-            Health Alerts
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginBottom: "0.5rem", lineHeight: "1.3" }}>
+            Patient Alerts
           </h1>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+          <p style={{ fontSize: "1rem", color: "var(--text-dim)", lineHeight: "1.6" }}>
             Real-time patient health monitoring &mdash; every alert is a chance to act early and keep your patients safe.
           </p>
         </div>
@@ -127,34 +197,37 @@ export default function AnomalyPage() {
 
         {loading ? (
           <div style={{ padding: "2rem", textAlign: "center" }}><span className="spinner" /></div>
-        ) : liveData.length === 0 ? (
-          <div
-            style={{
-              textAlign: "center",
-              color: "var(--text-dim)",
-              fontSize: "0.8rem",
-              padding: "1.5rem",
-              background: "var(--bg-card)",
-              border: "1px solid var(--border)",
-              borderRadius: "10px",
-            }}
-          >
-            No patients being monitored yet. Set up health monitoring for a care agent to see live data here.
-          </div>
         ) : (
-          <div className="anomaly-live-grid">
-            {liveData.map((agent) => (
+          <>
+            {liveData.length === 0 && (
+              <div
+                style={{
+                  padding: "1rem 1.25rem",
+                  marginBottom: "1rem",
+                  background: "#E6F5F2",
+                  border: "1px solid #1A7A6D",
+                  borderRadius: "8px",
+                  fontSize: "1rem",
+                  color: "#1A7A6D",
+                  lineHeight: "1.5",
+                }}
+              >
+                📊 <strong>Showing example data</strong> — Connect your care agents to see real patient monitoring
+              </div>
+            )}
+            <div className="anomaly-live-grid">
+            {(liveData.length > 0 ? liveData : MOCK_LIVE_DATA).map((agent) => (
               <div key={agent.handle} className={`anomaly-live-card anomaly-${agent.urgency}`}>
                 <div className="anomaly-live-header">
                   <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                     {agent.avatarPhotoUrl ? (
-                      <img src={agent.avatarPhotoUrl} alt={agent.displayName} style={{ width: 32, height: 32, borderRadius: "50%", objectFit: "cover" }} />
+                      <img src={agent.avatarPhotoUrl} alt={agent.displayName} style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />
                     ) : (
-                      <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.75rem", fontWeight: 700 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", background: "var(--border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "0.875rem", fontWeight: 700, lineHeight: "1" }}>
                         {agent.displayName[0].toUpperCase()}
                       </div>
                     )}
-                    <strong>{agent.displayName}</strong>
+                    <strong style={{ fontSize: "1rem", fontWeight: 700, lineHeight: "1.4" }}>{agent.displayName}</strong>
                   </div>
                   <StatusBadge status={agent.urgency} />
                 </div>
@@ -174,19 +247,20 @@ export default function AnomalyPage() {
                     </div>
                   </div>
                 ) : (
-                  <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>No metrics available</p>
+                  <p style={{ fontSize: "0.875rem", color: "var(--text-dim)", lineHeight: "1.5" }}>No metrics available</p>
                 )}
                 <div className="anomaly-live-footer">
-                  <span style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
+                  <span style={{ fontSize: "0.875rem", color: "var(--text-dim)", fontWeight: 600, lineHeight: "1.4" }}>
                     Score: {agent.anomalyScore}
                   </span>
                   {agent.activeAlertCount > 0 && (
-                    <span className="badge badge-red">{agent.activeAlertCount} active</span>
+                    <span className="badge badge-red" style={{ fontSize: "0.8125rem", fontWeight: 700, lineHeight: "1.4" }}>{agent.activeAlertCount} active</span>
                   )}
                 </div>
               </div>
             ))}
           </div>
+          </>
         )}
 
         {/* Alert History */}
@@ -219,23 +293,26 @@ export default function AnomalyPage() {
 
         {alertsLoading ? (
           <div style={{ padding: "1rem", textAlign: "center" }}><span className="spinner" /></div>
-        ) : alerts.length === 0 ? (
-          <div
-            style={{
-              textAlign: "center",
-              color: "var(--text-dim)",
-              fontSize: "0.8rem",
-              padding: "1.5rem",
-              background: "var(--bg-card)",
-              border: "1px solid var(--border)",
-              borderRadius: "10px",
-            }}
-          >
-            No health alerts found. Try the Live Demo to see how CareSync detects and responds to health changes.
-          </div>
         ) : (
-          <div className="agent-feed">
-            {alerts.map((alert) => {
+          <>
+            {alerts.length === 0 && (
+              <div
+                style={{
+                  padding: "1rem 1.25rem",
+                  marginBottom: "1rem",
+                  background: "#E6F5F2",
+                  border: "1px solid #1A7A6D",
+                  borderRadius: "8px",
+                  fontSize: "1rem",
+                  color: "#1A7A6D",
+                  lineHeight: "1.5",
+                }}
+              >
+                📊 <strong>Showing example alerts</strong> — Connect your care agents to see real patient monitoring
+              </div>
+            )}
+            <div className="agent-feed">
+            {(alerts.length > 0 ? alerts : MOCK_ALERTS).map((alert) => {
               const decision = JSON.parse(alert.decisionJson || "{}");
               const flags = JSON.parse(alert.flagsJson || "[]");
               const severityIcon = alert.severity === "urgent" ? "🔴" : alert.severity === "soon" ? "🟡" : "🟢";
@@ -246,17 +323,17 @@ export default function AnomalyPage() {
                     <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.375rem", flexWrap: "wrap" }}>
                       <StatusBadge status={alert.severity as "urgent" | "soon" | "routine"} />
                       <StatusBadge status={alert.status as "active" | "resolved" | "dismissed"} />
-                      <span style={{ fontFamily: "monospace", fontSize: "0.65rem", color: "var(--text-dim)" }}>
+                      <span style={{ fontFamily: "monospace", fontSize: "0.8125rem", color: "var(--text-dim)", fontWeight: 600, lineHeight: "1.4" }}>
                         Score: {alert.anomalyScore}
                       </span>
                     </div>
                     {decision.summary_explanation && (
-                      <div className="agent-feed-txt">{decision.summary_explanation}</div>
+                      <div className="agent-feed-txt" style={{ fontSize: "0.9375rem", lineHeight: "1.6" }}>{decision.summary_explanation}</div>
                     )}
                     {flags.length > 0 && (
                       <div style={{ display: "flex", gap: "0.25rem", flexWrap: "wrap", marginTop: "0.375rem" }}>
                         {flags.map((f: string) => (
-                          <span key={f} className="badge badge-yellow" style={{ fontSize: "0.6rem" }}>{f}</span>
+                          <span key={f} className="badge badge-yellow" style={{ fontSize: "0.8125rem", lineHeight: "1.4" }}>{f}</span>
                         ))}
                       </div>
                     )}
@@ -287,13 +364,14 @@ export default function AnomalyPage() {
                       )}
                     </div>
                   </div>
-                  <div className="agent-feed-time">
+                  <div className="agent-feed-time" style={{ fontSize: "0.8125rem", lineHeight: "1.4" }}>
                     {new Date(alert.createdAt).toLocaleString()}
                   </div>
                 </div>
               );
             })}
           </div>
+          </>
         )}
 
         <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>

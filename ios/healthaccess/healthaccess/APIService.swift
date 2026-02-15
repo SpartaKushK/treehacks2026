@@ -48,14 +48,65 @@ private struct UploadBody: Encodable {
     }
 }
 
+/// Response from the health-data upload endpoint
+struct UploadResponse: Decodable {
+    let uploadId: String?
+    let status: String?
+    let warning: String?
+    let anomaly: AnomalyResult?
+
+    struct AnomalyResult: Decodable {
+        let score: Double?
+        let flags: [String]?
+        let pipelineTriggered: Bool?
+        let traceId: String?
+        let urgency: String?
+    }
+}
+
 struct APIService {
-    // TODO: Replace with your deployed URL (e.g. https://your-app.vercel.app)
-    static var baseURL = "http://localhost:3001/api"
+    // ── Configuration ──────────────────────────────────────────────────
+    // To test against local dev server, change to: "http://localhost:3000/api"
+    static var baseURL = "https://treehacks2026-nine.vercel.app/api"
 
     /// The agent handle to associate this device's data with
-    static var userHandle = "pari"
+    static var userHandle = "healthcarea"
 
-    static func uploadHealthData(_ payload: HealthDataPayload) async throws {
+    /// Send a synthetic "bad" health payload to trigger the anomaly pipeline (demo only).
+    @discardableResult
+    static func triggerDemoAlert() async throws -> UploadResponse {
+        let now = Date()
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: now)!
+
+        let payload = HealthDataPayload(
+            exportDate: now,
+            steps: [StepData(date: yesterday, stepCount: 800)],           // very low steps
+            heartRates: [
+                HeartRateData(startDate: yesterday, endDate: yesterday, bpm: 105),  // elevated HR
+                HeartRateData(startDate: now, endDate: now, bpm: 98),
+            ],
+            sleepSamples: [
+                SleepData(startDate: yesterday, endDate: yesterday.addingTimeInterval(2.5 * 3600), sleepStage: "core"),  // only 2.5h sleep
+            ],
+            activeEnergy: [ActiveEnergyData(date: yesterday, kilocalories: 50)],
+            distances: [DistanceData(date: yesterday, distanceMeters: 200)],
+            workouts: [],
+            weights: [],
+            heights: [],
+            healthEvents: [
+                HealthEvent(eventType: "HKCategoryTypeIdentifierIrregularHeartRhythmEvent",
+                            startDate: yesterday, endDate: yesterday),
+                HealthEvent(eventType: "HKCategoryTypeIdentifierHighHeartRateEvent",
+                            startDate: now, endDate: now),
+            ]
+        )
+        return try await uploadHealthData(payload)
+    }
+
+    /// Upload a HealthKit payload to the server. Returns the parsed response
+    /// containing the upload ID and any anomaly results.
+    @discardableResult
+    static func uploadHealthData(_ payload: HealthDataPayload) async throws -> UploadResponse {
         guard let url = URL(string: baseURL)?.appendingPathComponent("health-data") else {
             throw APIError.invalidURL
         }
@@ -63,6 +114,7 @@ struct APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -76,9 +128,9 @@ struct APIService {
             throw APIError.encodingFailed
         }
 
-        let (_, response): (Data, URLResponse)
+        let (data, response): (Data, URLResponse)
         do {
-            (_, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await URLSession.shared.data(for: request)
         } catch {
             throw APIError.networkError(error)
         }
@@ -86,6 +138,14 @@ struct APIService {
         if let httpResponse = response as? HTTPURLResponse,
            !(200...299).contains(httpResponse.statusCode) {
             throw APIError.serverError(statusCode: httpResponse.statusCode)
+        }
+
+        let decoder = JSONDecoder()
+        do {
+            return try decoder.decode(UploadResponse.self, from: data)
+        } catch {
+            // If we can't parse the response but got 2xx, treat as success
+            return UploadResponse(uploadId: nil, status: "ok", warning: nil, anomaly: nil)
         }
     }
 }

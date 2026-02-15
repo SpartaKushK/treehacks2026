@@ -10,10 +10,12 @@ export async function POST(req: NextRequest) {
       messages,
       extractedEntities,
       healthContext,
+      language = "en",
     } = body as {
       messages: ConversationMessage[];
       extractedEntities: ClinicalEntities;
       healthContext?: Record<string, unknown>;
+      language?: string;
     };
 
     // Get the latest patient message for entity extraction
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     // Run response generation and entity extraction in parallel
     const [responseText, extractionResult] = await Promise.all([
-      generateDoctorResponse(messages, extractedEntities, healthContext),
+      generateDoctorResponse(messages, extractedEntities, healthContext, language),
       latestPatientMsg
         ? extractEntities(latestPatientMsg.text, messages, extractedEntities)
         : Promise.resolve({ entities: extractedEntities, newRedFlags: [] }),

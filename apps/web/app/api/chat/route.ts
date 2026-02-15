@@ -92,6 +92,9 @@ export async function POST(req: NextRequest) {
     }
 
     const user = await getCurrentUser();
+    if (!user) {
+      console.warn("[POST /api/chat] No Human row for Clerk user", userId, "— health extraction will be skipped");
+    }
     const handle = user?.handle ?? userId;
     const convoId = await getOrCreateConversation("chat", handle);
 

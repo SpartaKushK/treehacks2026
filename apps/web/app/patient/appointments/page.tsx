@@ -49,34 +49,38 @@ export default function AppointmentsPage() {
   const upcoming = appts.filter(a => !a.isToday);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold" style={{ color: "#0f172a" }}>Appointments</h1>
+    <div className="space-y-8" style={{ padding: "0.5rem" }}>
+      <div style={{ textAlign: "center" }}>
+        <h1 className="font-bold" style={{ color: "#0f172a", fontSize: "2rem", marginBottom: "0.5rem" }}>My Doctors</h1>
+        <p style={{ color: "#64748b", fontSize: "1.125rem" }}>Your upcoming appointments</p>
+      </div>
 
       {today.length > 0 && (
         <section>
-          <h2 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: "#1e293b" }}>
-            <div className="w-2 h-2 rounded-full" style={{ background: "#22c55e" }} /> Today
+          <h2 className="font-bold mb-4 flex items-center gap-3" style={{ color: "#1e293b", fontSize: "1.5rem" }}>
+            <div className="w-3 h-3 rounded-full" style={{ background: "#22c55e" }} /> Today's Appointments
           </h2>
-          <div className="space-y-3">{today.map(a => <ApptCard key={a.id} appt={a} />)}</div>
+          <div className="space-y-4">{today.map(a => <ApptCard key={a.id} appt={a} />)}</div>
         </section>
       )}
 
-      {today.length > 0 && upcoming.length > 0 && <Separator />}
+      {today.length > 0 && upcoming.length > 0 && <Separator style={{ marginTop: "2rem", marginBottom: "2rem" }} />}
 
       {upcoming.length > 0 && (
         <section>
-          <h2 className="text-lg font-bold mb-3 flex items-center gap-2" style={{ color: "#1e293b" }}>
-            <Calendar className="w-5 h-5" style={{ color: "#2563eb" }} /> Upcoming
+          <h2 className="font-bold mb-4 flex items-center gap-3" style={{ color: "#1e293b", fontSize: "1.5rem" }}>
+            <Calendar className="w-6 h-6" style={{ color: "#2563eb" }} /> Coming Soon
           </h2>
-          <div className="space-y-3">{upcoming.map(a => <ApptCard key={a.id} appt={a} />)}</div>
+          <div className="space-y-4">{upcoming.map(a => <ApptCard key={a.id} appt={a} />)}</div>
         </section>
       )}
 
       {appts.length === 0 && (
-        <Card style={{ border: "2px dashed #e2e8f0", borderRadius: 16 }}>
-          <CardContent className="p-12 text-center">
-            <Calendar className="w-12 h-12 mx-auto mb-4" style={{ color: "#cbd5e1" }} />
-            <p className="text-xl font-medium" style={{ color: "#64748b" }}>No appointments</p>
+        <Card style={{ border: "3px dashed #cbd5e1", borderRadius: 20, marginTop: "3rem" }}>
+          <CardContent className="p-16 text-center">
+            <Calendar className="w-16 h-16 mx-auto mb-6" style={{ color: "#cbd5e1" }} />
+            <p className="font-semibold" style={{ color: "#64748b", fontSize: "1.5rem" }}>No appointments scheduled</p>
+            <p style={{ color: "#94a3b8", fontSize: "1rem", marginTop: "0.5rem" }}>You're all set for now</p>
           </CardContent>
         </Card>
       )}
@@ -86,31 +90,32 @@ export default function AppointmentsPage() {
 
 function ApptCard({ appt }: { appt: Appt }) {
   return (
-    <Card style={{ border: appt.isToday ? "2px solid #bbf7d0" : "2px solid #f1f5f9", borderRadius: 16 }}>
-      <CardContent className="p-5">
+    <Card style={{ border: appt.isToday ? "3px solid #86efac" : "3px solid #e2e8f0", borderRadius: 20, background: appt.isToday ? "#f0fdf4" : "white" }}>
+      <CardContent className="p-7">
         <div className="flex items-start justify-between">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: appt.isToday ? "#dcfce7" : "#dbeafe" }}>
-              <User className="w-6 h-6" style={{ color: appt.isToday ? "#16a34a" : "#2563eb" }} />
+          <div className="flex items-start gap-5">
+            <div className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: appt.isToday ? "#bbf7d0" : "#dbeafe" }}>
+              <User className="w-8 h-8" style={{ color: appt.isToday ? "#16a34a" : "#2563eb" }} />
             </div>
             <div>
-              <p className="text-lg font-bold" style={{ color: "#1e293b" }}>{appt.doctor}</p>
-              <p className="text-sm" style={{ color: "#64748b" }}>{appt.specialty}</p>
-              <div className="flex items-center gap-4 mt-2">
-                <span className="flex items-center gap-1 text-sm" style={{ color: "#475569" }}><Calendar className="w-4 h-4" /> {appt.date}</span>
-                <span className="flex items-center gap-1 text-sm" style={{ color: "#475569" }}><Clock className="w-4 h-4" /> {appt.time}</span>
+              <p className="font-bold" style={{ color: "#1e293b", fontSize: "1.375rem" }}>{appt.doctor}</p>
+              <p style={{ color: "#64748b", fontSize: "1.125rem", marginTop: "0.25rem" }}>{appt.specialty}</p>
+              <div className="flex flex-col gap-2 mt-3">
+                <span className="flex items-center gap-2" style={{ color: "#475569", fontSize: "1rem" }}><Calendar className="w-5 h-5" /> {appt.date}</span>
+                <span className="flex items-center gap-2" style={{ color: "#475569", fontSize: "1rem" }}><Clock className="w-5 h-5" /> {appt.time}</span>
               </div>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-medium" style={{
+          <div className="flex flex-col items-end gap-3">
+            <span className="px-4 py-2 rounded-full font-semibold" style={{
               background: appt.type === "telehealth" ? "#dcfce7" : "#dbeafe",
-              color: appt.type === "telehealth" ? "#166534" : "#1e40af"
+              color: appt.type === "telehealth" ? "#166534" : "#1e40af",
+              fontSize: "0.9rem"
             }}>
-              {appt.type === "telehealth" ? "Video" : "In Person"}
+              {appt.type === "telehealth" ? <span className="flex items-center gap-2"><Video className="w-4 h-4" /> Video Call</span> : <span className="flex items-center gap-2"><MapPin className="w-4 h-4" /> In Person</span>}
             </span>
             {appt.isToday && appt.type === "telehealth" && (
-              <Button size="sm" style={{ background: "#16a34a", color: "white", borderRadius: 8 }}>Join</Button>
+              <Button size="lg" style={{ background: "#16a34a", color: "white", borderRadius: 12, fontSize: "1rem", fontWeight: 600, padding: "0.75rem 1.5rem" }}>Join Call</Button>
             )}
           </div>
         </div>

@@ -3,6 +3,8 @@ import SwiftUI
 struct ContentView: View {
     @State private var manager = HealthKitManager()
     @State private var uploadStatus: String?
+    @State private var demoStatus: String?
+    @State private var isDemoLoading = false
 
     var body: some View {
         NavigationStack {
@@ -68,6 +70,33 @@ struct ContentView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                // MARK: - Demo
+                Section {
+                    Button(role: .destructive) {
+                        Task { await triggerDemoAlert() }
+                    } label: {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                            Text("Trigger Demo Alert")
+                            Spacer()
+                            if isDemoLoading {
+                                ProgressView()
+                            }
+                        }
+                    }
+                    .disabled(isDemoLoading)
+
+                    if let demoStatus {
+                        Text(demoStatus)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("Demo")
+                } footer: {
+                    Text("Sends synthetic bad health data (low sleep, high HR, irregular rhythm) to trigger the anomaly pipeline.")
+                }
             }
             .navigationTitle("HealthAccess")
         }
@@ -79,12 +108,38 @@ struct ContentView: View {
         !manager.weights.isEmpty || !manager.heights.isEmpty || !manager.healthEvents.isEmpty
     }
 
+    private func triggerDemoAlert() async {
+        isDemoLoading = true
+        demoStatus = "Sending synthetic alert..."
+        do {
+            let result = try await APIService.triggerDemoAlert()
+            if let anomaly = result.anomaly, let score = anomaly.score {
+                let flags = anomaly.flags?.joined(separator: ", ") ?? "none"
+                let triggered = anomaly.pipelineTriggered == true ? "pipeline triggered" : "below threshold"
+                demoStatus = "Score: \(Int(score)) | \(flags) | \(triggered)"
+            } else {
+                demoStatus = "Alert sent (no anomaly data returned)"
+            }
+        } catch {
+            demoStatus = "Error: \(error.localizedDescription)"
+        }
+        isDemoLoading = false
+    }
+
     private func uploadData() async {
         uploadStatus = "Uploading..."
         let payload = manager.buildPayload()
         do {
-            try await APIService.uploadHealthData(payload)
-            uploadStatus = "Upload successful!"
+            let result = try await APIService.uploadHealthData(payload)
+            if let warning = result.warning {
+                uploadStatus = "Partial upload: \(warning)"
+            } else if let anomaly = result.anomaly,
+                      let score = anomaly.score, score > 0 {
+                let flags = anomaly.flags?.joined(separator: ", ") ?? "none"
+                uploadStatus = "Uploaded — anomaly score \(Int(score)), flags: \(flags)"
+            } else {
+                uploadStatus = "Upload successful!"
+            }
         } catch {
             uploadStatus = "Error: \(error.localizedDescription)"
         }

@@ -3,6 +3,50 @@
 import { useEffect, useState } from "react";
 import TopBar from "@/components/TopBar";
 
+// Mock calendar events for when no real data is available
+const MOCK_EVENTS: CalEvent[] = [
+  {
+    id: "mock-1",
+    title: "Dr. Smith - Routine Checkup",
+    startTs: new Date(Date.now() + 86400000 * 2).toISOString().replace(/T.*/, 'T09:00:00'),
+    endTs: new Date(Date.now() + 86400000 * 2).toISOString().replace(/T.*/, 'T10:00:00'),
+    source: "manual",
+    googleEventId: null,
+  },
+  {
+    id: "mock-2",
+    title: "Medication Review - Pharmacist",
+    startTs: new Date(Date.now() + 86400000 * 3).toISOString().replace(/T.*/, 'T14:30:00'),
+    endTs: new Date(Date.now() + 86400000 * 3).toISOString().replace(/T.*/, 'T15:00:00'),
+    source: "manual",
+    googleEventId: null,
+  },
+  {
+    id: "mock-3",
+    title: "Physical Therapy Session",
+    startTs: new Date(Date.now() + 86400000 * 4).toISOString().replace(/T.*/, 'T11:00:00'),
+    endTs: new Date(Date.now() + 86400000 * 4).toISOString().replace(/T.*/, 'T12:00:00'),
+    source: "manual",
+    googleEventId: null,
+  },
+  {
+    id: "mock-4",
+    title: "Follow-up Call - Care Coordinator",
+    startTs: new Date(Date.now() + 86400000 * 5).toISOString().replace(/T.*/, 'T10:00:00'),
+    endTs: new Date(Date.now() + 86400000 * 5).toISOString().replace(/T.*/, 'T10:30:00'),
+    source: "manual",
+    googleEventId: null,
+  },
+  {
+    id: "mock-5",
+    title: "Blood Pressure Check - Home Visit",
+    startTs: new Date(Date.now() + 86400000 * 7).toISOString().replace(/T.*/, 'T15:00:00'),
+    endTs: new Date(Date.now() + 86400000 * 7).toISOString().replace(/T.*/, 'T15:30:00'),
+    source: "manual",
+    googleEventId: null,
+  },
+];
+
 interface CalEvent {
   id: string;
   title: string;
@@ -65,9 +109,12 @@ export default function CalendarPage() {
 
   const selectedAgentData = agents.find((a) => a.handle === selectedAgent);
 
+  // Use mock events if no real events exist
+  const displayEvents = events.length > 0 ? events : MOCK_EVENTS;
+
   // Group events by date
   const eventsByDate: Record<string, CalEvent[]> = {};
-  events.forEach((e) => {
+  displayEvents.forEach((e) => {
     const date = new Date(e.startTs).toLocaleDateString(undefined, {
       weekday: "short",
       month: "short",
@@ -83,10 +130,10 @@ export default function CalendarPage() {
       <div className="dashboard-content">
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+          <h1 style={{ fontSize: "1.75rem", fontWeight: 700, marginBottom: "0.5rem", lineHeight: "1.3" }}>
             Care Schedule
           </h1>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+          <p style={{ fontSize: "1rem", color: "var(--text-dim)", lineHeight: "1.6" }}>
             Upcoming appointments, care visits, and check-ins for your patients
           </p>
         </div>
@@ -128,14 +175,13 @@ export default function CalendarPage() {
                 className="agent-config-btn"
                 onClick={syncCalendar}
                 disabled={syncing}
-                style={{ padding: "0.375rem 0.75rem" }}
               >
                 {syncing ? "SYNCING..." : "SYNC GOOGLE"}
               </button>
             ) : selectedAgentData ? (
               <button
                 className="btn btn-primary"
-                style={{ fontSize: "0.7rem", padding: "0.375rem 0.75rem" }}
+                style={{ fontSize: "0.875rem", padding: "0.5rem 1rem", minHeight: "44px" }}
                 onClick={() => window.location.href = `/api/google/connect?handle=${selectedAgent}`}
               >
                 Connect Google
@@ -146,22 +192,25 @@ export default function CalendarPage() {
 
         {loading ? (
           <div style={{ padding: "2rem", textAlign: "center" }}><span className="spinner" /></div>
-        ) : Object.keys(eventsByDate).length === 0 ? (
-          <div
-            style={{
-              textAlign: "center",
-              color: "var(--text-dim)",
-              fontSize: "0.8rem",
-              padding: "1.5rem",
-              background: "var(--bg-card)",
-              border: "1px solid var(--border)",
-              borderRadius: "10px",
-            }}
-          >
-            No upcoming appointments. Connect Google Calendar or try the Live Demo to see scheduling in action.
-          </div>
         ) : (
-          <div className="calendar-list">
+          <>
+            {events.length === 0 && (
+              <div
+                style={{
+                  padding: "1rem 1.25rem",
+                  marginBottom: "1rem",
+                  background: "#E6F5F2",
+                  border: "1px solid #1A7A6D",
+                  borderRadius: "8px",
+                  fontSize: "1rem",
+                  color: "#1A7A6D",
+                  lineHeight: "1.5",
+                }}
+              >
+                📅 <strong>Showing example appointments</strong> — Connect your calendar to see real schedule
+              </div>
+            )}
+            <div className="calendar-list">
             {Object.entries(eventsByDate).map(([date, dayEvents]) => (
               <div key={date}>
                 <div className="calendar-day-header">{date}</div>
@@ -173,7 +222,7 @@ export default function CalendarPage() {
                       {new Date(event.endTs).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </div>
                     <div className="calendar-event-title">{event.title}</div>
-                    <span className={`badge ${event.source === "google" ? "badge-blue" : "badge-purple"}`} style={{ fontSize: "0.6rem" }}>
+                    <span className={`badge ${event.source === "google" ? "badge-blue" : "badge-purple"}`} style={{ fontSize: "0.8125rem", lineHeight: "1.4" }}>
                       {event.source}
                     </span>
                   </div>
@@ -181,6 +230,7 @@ export default function CalendarPage() {
               </div>
             ))}
           </div>
+          </>
         )}
 
         <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>

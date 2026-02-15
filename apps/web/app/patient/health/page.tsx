@@ -40,55 +40,59 @@ export default function HealthDashboard() {
   if (!data) return null;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold" style={{ color: "#0f172a" }}>My Health</h1>
-        <p className="text-sm" style={{ color: "#94a3b8" }}>Updated {data.lastUpdated}</p>
+    <div className="space-y-8" style={{ padding: "0.5rem" }}>
+      <div style={{ textAlign: "center" }}>
+        <h1 className="font-bold" style={{ color: "#0f172a", fontSize: "2rem", marginBottom: "0.5rem" }}>My Health Today</h1>
+        <p style={{ color: "#64748b", fontSize: "1.125rem" }}>Last checked: {data.lastUpdated}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-          <CardContent className="p-6">
-            <Heart className="w-5 h-5 mb-2" style={{ color: "#ef4444" }} />
-            <p className="font-bold" style={{ fontSize: 48, color: "#0f172a", lineHeight: 1 }}>{data.heartRate}</p>
-            <p className="text-sm mt-1" style={{ color: "#94a3b8" }}>bpm</p>
+      <div className="grid grid-cols-2 gap-5">
+        <Card style={{ border: "3px solid #fecaca", borderRadius: 20, background: "#fef2f2" }}>
+          <CardContent className="p-7 text-center">
+            <Heart className="w-8 h-8 mb-3 mx-auto" style={{ color: "#ef4444" }} />
+            <p className="font-bold" style={{ fontSize: 56, color: "#0f172a", lineHeight: 1 }}>{data.heartRate}</p>
+            <p className="font-semibold mt-2" style={{ color: "#64748b", fontSize: "1.125rem" }}>Heart Rate</p>
+            <p className="text-xs mt-1" style={{ color: "#94a3b8", fontSize: "0.875rem" }}>beats per minute</p>
           </CardContent>
         </Card>
 
-        <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-          <CardContent className="p-6">
-            <Footprints className="w-5 h-5 mb-2" style={{ color: "#3b82f6" }} />
-            <p className="font-bold" style={{ fontSize: 48, color: "#0f172a", lineHeight: 1 }}>{data.steps.toLocaleString()}</p>
-            <p className="text-sm mt-1" style={{ color: "#94a3b8" }}>steps</p>
+        <Card style={{ border: "3px solid #bfdbfe", borderRadius: 20, background: "#eff6ff" }}>
+          <CardContent className="p-7 text-center">
+            <Footprints className="w-8 h-8 mb-3 mx-auto" style={{ color: "#3b82f6" }} />
+            <p className="font-bold" style={{ fontSize: 56, color: "#0f172a", lineHeight: 1 }}>{data.steps.toLocaleString()}</p>
+            <p className="font-semibold mt-2" style={{ color: "#64748b", fontSize: "1.125rem" }}>Steps Today</p>
+            <p className="text-xs mt-1" style={{ color: "#94a3b8", fontSize: "0.875rem" }}>Keep moving!</p>
           </CardContent>
         </Card>
 
-        <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-          <CardContent className="p-6">
-            <Moon className="w-5 h-5 mb-2" style={{ color: "#8b5cf6" }} />
-            <p className="font-bold" style={{ fontSize: 48, color: "#0f172a", lineHeight: 1 }}>{data.sleepHours}</p>
-            <p className="text-sm mt-1" style={{ color: "#94a3b8" }}>hrs sleep</p>
+        <Card style={{ border: "3px solid #ddd6fe", borderRadius: 20, background: "#f5f3ff" }}>
+          <CardContent className="p-7 text-center">
+            <Moon className="w-8 h-8 mb-3 mx-auto" style={{ color: "#8b5cf6" }} />
+            <p className="font-bold" style={{ fontSize: 56, color: "#0f172a", lineHeight: 1 }}>{data.sleepHours}</p>
+            <p className="font-semibold mt-2" style={{ color: "#64748b", fontSize: "1.125rem" }}>Sleep Last Night</p>
+            <p className="text-xs mt-1" style={{ color: "#94a3b8", fontSize: "0.875rem" }}>hours of rest</p>
           </CardContent>
         </Card>
 
-        <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-          <CardContent className="p-6">
-            <Activity className="w-5 h-5 mb-2" style={{ color: "#22c55e" }} />
-            <p className="font-bold" style={{ fontSize: 48, color: "#0f172a", lineHeight: 1 }}>42</p>
-            <p className="text-sm mt-1" style={{ color: "#94a3b8" }}>ms HRV</p>
+        <Card style={{ border: "3px solid #bbf7d0", borderRadius: 20, background: "#f0fdf4" }}>
+          <CardContent className="p-7 text-center">
+            <Activity className="w-8 h-8 mb-3 mx-auto" style={{ color: "#22c55e" }} />
+            <p className="font-bold" style={{ fontSize: 56, color: "#0f172a", lineHeight: 1 }}>Good</p>
+            <p className="font-semibold mt-2" style={{ color: "#64748b", fontSize: "1.125rem" }}>Health Status</p>
+            <p className="text-xs mt-1" style={{ color: "#94a3b8", fontSize: "0.875rem" }}>All looking well</p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-4">
         <Link href="/patient/history" className="flex-1">
-          <Button variant="outline" size="lg" className="w-full" style={{ fontSize: 16, borderRadius: 12, height: 48 }}>
-            <Clock className="w-5 h-5 mr-2" /> History
+          <Button variant="outline" size="lg" className="w-full" style={{ fontSize: "1.125rem", borderRadius: 16, height: 64, borderWidth: 2 }}>
+            <Clock className="w-6 h-6 mr-2" /> Past Visits
           </Button>
         </Link>
         <Link href="/patient/appointments" className="flex-1">
-          <Button size="lg" className="w-full" style={{ background: "#2563eb", color: "white", fontSize: 16, borderRadius: 12, height: 48 }}>
-            Appointments <ArrowRight className="w-5 h-5 ml-2" />
+          <Button size="lg" className="w-full shadow-lg" style={{ background: "#2563eb", color: "white", fontSize: "1.125rem", fontWeight: 600, borderRadius: 16, height: 64 }}>
+            Book Doctor <ArrowRight className="w-6 h-6 ml-2" />
           </Button>
         </Link>
       </div>
