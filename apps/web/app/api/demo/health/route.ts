@@ -6,10 +6,10 @@ import { signPayload, verifySignature } from "@/lib/crypto";
 import { handleCapability } from "@/lib/people";
 import { evaluatePolicy } from "@/lib/policy";
 import { startTrace, addStep, finalizeTrace } from "@/lib/trace";
-import { getPlanner, type Provider } from "@/lib/llm";
-import type { HealthSummaryOutput } from "@people/shared";
 
 export const dynamic = "force-dynamic";
+import { getPlanner, type Provider } from "@/lib/llm";
+import type { HealthSummaryOutput } from "@people/shared";
 
 export async function GET(req: NextRequest) {
   await ensureSeed();

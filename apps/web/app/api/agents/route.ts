@@ -5,6 +5,8 @@ import { ensureSeed } from "@/lib/ensureSeed";
 import { toHex } from "@/lib/crypto";
 import nacl from "tweetnacl";
 
+export const dynamic = "force-dynamic";
+
 /** GET /api/agents — list current user's agents + unclaimed demo agents */
 export async function GET() {
   try {
