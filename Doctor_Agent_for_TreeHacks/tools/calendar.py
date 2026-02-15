@@ -5,13 +5,15 @@ Provides two capabilities:
   1. get_free_slots()  — query the doctor's calendar for available appointment windows
   2. create_event()    — book an appointment on the doctor's calendar
 
-Uses a Service Account to access the doctor's Google Calendar (no user OAuth flow).
-Falls back to mock data if credentials are missing.
-
-Setup: see GOOGLE_SETUP.md
+Supports two auth methods (no repeated sign-in):
+  - OAuth refresh token: set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN
+    (e.g. after the doctor connects once via the Next.js "Connect Google Calendar" flow).
+  - Service account: set GOOGLE_SERVICE_ACCOUNT_FILE and share the doctor's calendar
+    with the service account email. See GOOGLE_SETUP.md.
 """
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -20,34 +22,74 @@ import config
 
 logger = logging.getLogger(__name__)
 
-# ─── Service Account Credentials ──────────────────────────────────────────────
+# ─── Calendar API client (OAuth or Service Account) ────────────────────────────
 
 _calendar_service = None
+_oauth_creds = None  # Only set when using OAuth; used to refresh token when expired
 
 
 def _get_calendar_service():
     """
-    Lazily initialise the Google Calendar API client using the service account.
+    Lazily initialise the Google Calendar API client.
+    Prefers OAuth refresh token (one-time sign-in, token saved in env) if set;
+    otherwise uses service account (calendar shared with bot email = no sign-in).
     Returns None if credentials are missing or invalid.
     """
-    global _calendar_service
+    global _calendar_service, _oauth_creds
     if _calendar_service is not None:
         return _calendar_service
 
     try:
-        from google.oauth2 import service_account
+        from google.oauth2.credentials import Credentials
+        from google.auth.transport.requests import Request
         from googleapiclient.discovery import build
 
         SCOPES = ["https://www.googleapis.com/auth/calendar"]
-        creds = service_account.Credentials.from_service_account_file(
-            config.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES
-        )
-        _calendar_service = build("calendar", "v3", credentials=creds)
-        logger.info("Google Calendar service initialised (service account).")
-        return _calendar_service
+
+        # Option 1: OAuth refresh token — doctor signed in once; we use saved token
+        if (
+            config.GOOGLE_CLIENT_ID
+            and config.GOOGLE_CLIENT_SECRET
+            and config.GOOGLE_REFRESH_TOKEN
+        ):
+            _oauth_creds = Credentials(
+                token=None,
+                refresh_token=config.GOOGLE_REFRESH_TOKEN,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=config.GOOGLE_CLIENT_ID,
+                client_secret=config.GOOGLE_CLIENT_SECRET,
+                scopes=SCOPES,
+            )
+            _oauth_creds.refresh(Request())
+            _calendar_service = build("calendar", "v3", credentials=_oauth_creds)
+            logger.info("Google Calendar service initialised (OAuth refresh token).")
+            return _calendar_service
+
+        # Option 2: Service account — calendar shared with service account email
+        if config.GOOGLE_SERVICE_ACCOUNT_FILE and os.path.isfile(
+            config.GOOGLE_SERVICE_ACCOUNT_FILE
+        ):
+            from google.oauth2 import service_account
+            creds = service_account.Credentials.from_service_account_file(
+                config.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES
+            )
+            _calendar_service = build("calendar", "v3", credentials=creds)
+            logger.info("Google Calendar service initialised (service account).")
+            return _calendar_service
+
+        logger.warning("Google Calendar: no GOOGLE_REFRESH_TOKEN or GOOGLE_SERVICE_ACCOUNT_FILE.")
+        return None
     except Exception as e:
         logger.warning(f"Google Calendar unavailable, using mock data: {e}")
         return None
+
+
+def _refresh_oauth_if_needed():
+    """Refresh OAuth access token if expired (so doctor never has to sign in again)."""
+    global _oauth_creds
+    if _oauth_creds is not None and _oauth_creds.expired:
+        from google.auth.transport.requests import Request
+        _oauth_creds.refresh(Request())
 
 
 # ─── Free / Busy Query ────────────────────────────────────────────────────────
@@ -60,17 +102,31 @@ def get_free_slots(
     """
     Return up to *max_slots* available appointment windows for the doctor.
 
-    Tries the real Google Calendar freebusy API first.
-    Falls back to deterministic mock slots if credentials are not configured.
+    Uses the Google Calendar freebusy API when GOOGLE_SERVICE_ACCOUNT_FILE (or
+    OAuth refresh token) is configured. When the service account JSON is set,
+    only real calendar data is returned; no mock fallback.
     """
+    _refresh_oauth_if_needed()
     service = _get_calendar_service()
+    using_service_account = bool(
+        config.GOOGLE_SERVICE_ACCOUNT_FILE and os.path.isfile(config.GOOGLE_SERVICE_ACCOUNT_FILE)
+    )
     if service is None:
+        if using_service_account:
+            logger.error(
+                "Google Calendar: service account file is set but calendar service failed to init. "
+                "Check GOOGLE_SERVICE_ACCOUNT_FILE path and that the doctor's calendar is "
+                "shared with the service account email."
+            )
+            return []
         return _mock_free_slots(urgency_hours, duration_minutes, max_slots)
 
     try:
         return _real_free_slots(service, urgency_hours, duration_minutes, max_slots)
     except Exception as e:
-        logger.error(f"Calendar freebusy query failed, falling back to mock: {e}")
+        logger.error(f"Calendar freebusy query failed: {e}")
+        if using_service_account:
+            raise
         return _mock_free_slots(urgency_hours, duration_minutes, max_slots)
 
 
@@ -181,6 +237,7 @@ def create_event(
     Create a calendar event for the confirmed appointment.
     Returns the event ID, or None if calendar is not configured.
     """
+    _refresh_oauth_if_needed()
     service = _get_calendar_service()
     if service is None:
         logger.info(

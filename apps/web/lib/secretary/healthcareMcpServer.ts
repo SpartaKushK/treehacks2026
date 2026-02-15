@@ -10,6 +10,7 @@ import { z } from "zod";
 import { addStep } from "../trace";
 import { runSchedulerAgent } from "../agents/SchedulerAgent";
 import { runHealthAgent } from "../agents/HealthAgent";
+import { DoctorAlertSchema } from "../agentRegistry";
 
 /* ------------------------------------------------------------------ */
 /*  Active Context — module-scoped, set before each query() call       */
@@ -453,6 +454,119 @@ const lookupClinicalEvidenceTool = tool(
 );
 
 /* ------------------------------------------------------------------ */
+/*  Tool: notify_doctor_agent                                          */
+/* ------------------------------------------------------------------ */
+
+const notifyDoctorAgentTool = tool(
+  "notify_doctor_agent",
+  "Forward a health alert to the external Doctor Agent (Python) at its /alert endpoint so it can run its own triage + scheduling pipeline.",
+  {
+    patient_id: z.string().describe("Patient identifier (e.g. handle)"),
+    patient_name: z.string().describe("Patient name"),
+    patient_email: z.string().describe("Patient email"),
+    patient_phone: z.string().optional(),
+    alert_type: z.string().describe("Doctor agent AlertType string"),
+    metric_value: z.number().optional(),
+    metric_unit: z.string().optional(),
+    threshold_value: z.number().optional(),
+    description: z.string().describe("Human-readable alert description"),
+    patient_agent_url: z.string().url().optional(),
+    preferred_days: z.array(z.string()).optional(),
+    preferred_time_of_day: z
+      .enum(["morning", "afternoon", "evening"])
+      .optional(),
+  },
+  async (args) => {
+    const ctx = getActiveContext();
+    const traceId = ctx?.traceId ?? "";
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const doctorProxy = `${baseUrl}/api/doctor/alert`;
+    const fallbackPatientUrl =
+      process.env.PATIENT_AGENT_URL || `${baseUrl}/api/patient/agent`;
+
+    const payload = {
+      patient_id: args.patient_id,
+      patient_name: args.patient_name,
+      patient_email: args.patient_email,
+      patient_phone: args.patient_phone,
+      alert_type: args.alert_type,
+      metric_value: args.metric_value,
+      metric_unit: args.metric_unit,
+      threshold_value: args.threshold_value,
+      description: args.description,
+      patient_agent_url: args.patient_agent_url || fallbackPatientUrl,
+      preferred_days: args.preferred_days,
+      preferred_time_of_day: args.preferred_time_of_day,
+    };
+
+    const validation = DoctorAlertSchema.safeParse(payload);
+    if (!validation.success) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              error: true,
+              message: `Invalid doctor alert payload: ${validation.error.message}`,
+            }),
+          },
+        ],
+      };
+    }
+
+    addStep(traceId, {
+      actor: "secretary",
+      event: "FORWARD_TO_DOCTOR_AGENT",
+      ok: true,
+      data: { endpoint: doctorProxy, patient_id: payload.patient_id },
+    });
+
+    try {
+      const res = await fetch(doctorProxy, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      let json: Record<string, unknown> = {};
+      try {
+        json = await res.json();
+      } catch {
+        // ignore
+      }
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              error: !res.ok,
+              status: res.status,
+              response: json,
+              message: res.ok
+                ? "Doctor agent accepted alert."
+                : `Doctor agent returned ${res.status}`,
+            }),
+          },
+        ],
+      };
+    } catch (e) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              error: true,
+              message: `Failed to reach doctor agent: ${e instanceof Error ? e.message : String(e)}`,
+            }),
+          },
+        ],
+      };
+    }
+  }
+);
+
+/* ------------------------------------------------------------------ */
 /*  Export the MCP server                                              */
 /* ------------------------------------------------------------------ */
 
@@ -465,5 +579,6 @@ export const healthcareServer = createSdkMcpServer({
     triagePatientTool,
     getHealthSummaryTool,
     scheduleAppointmentTool,
+    notifyDoctorAgentTool,
   ],
 });

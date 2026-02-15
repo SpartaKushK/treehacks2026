@@ -131,6 +131,16 @@ export default function ChatPage() {
     }
   }
 
+  async function handleClearHistory() {
+    try {
+      await fetch("/api/chat/clear", { method: "POST" });
+      setMessages([]);
+      setError(null);
+    } catch {
+      setError("Failed to clear history");
+    }
+  }
+
   return (
     <div className="chat-container">
       {error && <div className="chat-error">{error}</div>}
@@ -182,6 +192,15 @@ export default function ChatPage() {
           rows={1}
           disabled={streaming}
         />
+        <button
+          type="button"
+          className="btn"
+          onClick={handleClearHistory}
+          disabled={streaming}
+          title="Clear chat history"
+        >
+          Clear
+        </button>
         <button
           className="btn btn-primary"
           onClick={handleSend}

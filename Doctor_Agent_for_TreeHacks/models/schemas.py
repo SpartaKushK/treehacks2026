@@ -197,3 +197,42 @@ class PlatformTriageOutcome(BaseModel):
     booking_confirmation: dict   # {start: str, end: str, method: "telehealth"|"in_person"}
     escalation_triggered: bool
     calendar_event_id: Optional[str] = None  # Google Calendar event ID if created
+
+
+# ─── Unified Agent Request (single POST endpoint) ──────────────────────────────
+
+class AgentRequestGetAvailability(BaseModel):
+    """Payload when action is get_availability — query doctor's calendar only (no booking)."""
+    hours_ahead: int = 12
+    max_slots: int = 10
+
+
+class AgentRequestAlert(BaseModel):
+    """Payload when action is alert — same as HealthAlert for the full pipeline."""
+    alert: HealthAlert
+
+
+class AgentRequest(BaseModel):
+    """
+    Single unified POST body. The caller (e.g. secretary/chat agent) sets 'action';
+    the Doctor Agent dispatches to the right handler.
+    """
+    action: Literal["get_availability", "alert"]
+    get_availability: Optional[AgentRequestGetAvailability] = None
+    alert: Optional[HealthAlert] = None
+
+
+class AgentResponseAvailability(BaseModel):
+    """Response for action=get_availability."""
+    action: Literal["get_availability"] = "get_availability"
+    slots: List[dict]  # [{ "start": iso, "end": iso, "label": optional }]
+
+
+class AgentResponseAlert(BaseModel):
+    """Response for action=alert — same shape as AlertResponse."""
+    action: Literal["alert"] = "alert"
+    status: str
+    triage_severity: Severity
+    action_taken: str
+    message: str
+    session_id: Optional[str] = None

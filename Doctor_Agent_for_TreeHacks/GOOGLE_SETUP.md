@@ -7,6 +7,15 @@ You only need ~15 minutes for the first time setup.
 
 ---
 
+## Doctor calendar: no sign-in again
+
+The Doctor Agent can access the doctor's Google Calendar **without the doctor signing in again**:
+
+- **Option A — Service account (recommended):** Create a service account, download its JSON key, and **share the doctor's Google Calendar** with the service account email (Settings → Share with specific people → add the `client_email` from the JSON). The agent then has permanent access until you revoke the share. No login flow at all.
+- **Option B — OAuth refresh token:** The doctor signs in once (e.g. via the Next.js app "Connect Google Calendar"). Your app receives a `refresh_token`; save it in the Doctor Agent `.env` as `GOOGLE_REFRESH_TOKEN` (with `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`). The agent uses that token forever to get new access tokens; the doctor never has to sign in again.
+
+---
+
 ## Part 1 — Create a Google Cloud Project
 
 1. Go to https://console.cloud.google.com
@@ -80,6 +89,27 @@ service = build('calendar', 'v3', credentials=creds)
 events = service.events().list(calendarId='doctor@example.com', maxResults=5).execute()
 print(events)
 ```
+
+---
+
+## Part 3b — Option B: OAuth refresh token (doctor signs in once)
+
+If you prefer not to use a service account, the doctor can sign in once and you save the refresh token:
+
+1. Use the **same** OAuth client as the Next.js app (Part 4 below): create OAuth client ID (Desktop or Web), get Client ID and Client Secret.
+2. Have the doctor complete the Google sign-in once (e.g. in the Next.js dashboard: **Connect Google Calendar**). The app will store `refresh_token` in the database (e.g. `Human.googleCalendarTokens` for the doctor user).
+3. Copy the refresh token into the Doctor Agent `.env`:
+   - From the DB: query the doctor’s `googleCalendarTokens` JSON and copy the `refresh_token` value.
+   - Or run a one-time OAuth script that prints the refresh token after the doctor signs in.
+4. Set in Doctor Agent `.env`:
+   ```
+   GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-your-secret
+   GOOGLE_REFRESH_TOKEN=1//0abc...paste-here
+   DOCTOR_CALENDAR_ID=primary
+   ```
+   (Use `primary` for the default calendar, or the doctor’s email.)
+5. The Doctor Agent will use this token to get new access tokens when needed; the doctor never has to sign in again.
 
 ---
 

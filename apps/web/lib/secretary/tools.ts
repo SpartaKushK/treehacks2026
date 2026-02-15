@@ -9,6 +9,10 @@
 import { addStep } from "../trace";
 import { runSchedulerAgent, type SchedulerInput } from "../agents/SchedulerAgent";
 import { runHealthAgent, type HealthAgentInput } from "../agents/HealthAgent";
+import { DoctorAlertSchema } from "../agentRegistry";
+import { prisma } from "../store";
+import { findAvailableSlots } from "../google-calendar";
+import { bookCalendarEvent } from "../google-calendar";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -141,6 +145,288 @@ const analyzeAnomaly: ToolDefinition = {
         message: `Health agent error: ${e instanceof Error ? e.message : String(e)}`,
       };
     }
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Tool: notify_doctor_agent                                          */
+/* ------------------------------------------------------------------ */
+
+const notifyDoctorAgent: ToolDefinition = {
+  name: "notify_doctor_agent",
+  description:
+    "Send a health alert to the external Doctor Agent (Python service) via its single /alert endpoint. " +
+    "Use when you want the doctor agent to run its own triage + scheduling pipeline. " +
+    "The patient_agent_url defaults to the local patient-agent stub (/api/patient/agent) if not provided.",
+  parameters: {
+    type: "object",
+    properties: {
+      patient_id: { type: "string", description: "Patient identifier (e.g. handle)" },
+      patient_name: { type: "string", description: "Patient display name" },
+      patient_email: { type: "string", description: "Patient email for scheduling confirmation" },
+      patient_phone: { type: "string", description: "Optional phone number" },
+      alert_type: { type: "string", description: "Doctor agent AlertType string" },
+      metric_value: { type: "number", description: "Numeric metric value (e.g. 142)" },
+      metric_unit: { type: "string", description: "Unit (e.g. bpm)" },
+      threshold_value: { type: "number", description: "Baseline/threshold" },
+      description: { type: "string", description: "Human-readable alert description" },
+      patient_agent_url: { type: "string", description: "Callback URL for slot proposals" },
+      preferred_days: { type: "array", items: { type: "string" } },
+      preferred_time_of_day: {
+        type: "string",
+        enum: ["morning", "afternoon", "evening"],
+      },
+    },
+    required: ["patient_id", "patient_name", "patient_email", "alert_type", "description"],
+  },
+
+  async execute(args, ctx) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const doctorProxy = `${baseUrl}/api/doctor/alert`;
+    const fallbackPatientUrl =
+      process.env.PATIENT_AGENT_URL || `${baseUrl}/api/patient/agent`;
+
+    const td = ctx.triggerData || {};
+    const payload = {
+      patient_id: (args.patient_id as string) || (td.user_handle as string) || "unknown",
+      patient_name:
+        (args.patient_name as string) || (td.patient_name as string) || (td.user_handle as string) || "Patient",
+      patient_email:
+        (args.patient_email as string) ||
+        (td.patient_email as string) ||
+        `${(td.user_handle as string) || "patient"}@example.com`,
+      patient_phone: (args.patient_phone as string) || (td.patient_phone as string) || undefined,
+      alert_type: (args.alert_type as string) || (td.alert_type as string) || "unknown",
+      metric_value: (args.metric_value as number) ?? (td.metric_value as number),
+      metric_unit: (args.metric_unit as string) || (td.metric_unit as string),
+      threshold_value:
+        (args.threshold_value as number) ?? (td.threshold_value as number) ?? (td.threshold as number),
+      description:
+        (args.description as string) ||
+        (td.description as string) ||
+        "Health alert forwarded from Secretary Agent.",
+      patient_agent_url:
+        (args.patient_agent_url as string) ||
+        (td.patient_agent_url as string) ||
+        fallbackPatientUrl,
+      preferred_days:
+        (args.preferred_days as string[]) || (td.preferred_days as string[]) || undefined,
+      preferred_time_of_day:
+        (args.preferred_time_of_day as string) || (td.preferred_time_of_day as string) || undefined,
+    };
+
+    const validation = DoctorAlertSchema.safeParse(payload);
+    if (!validation.success) {
+      return {
+        error: true,
+        message: `Invalid doctor alert payload: ${validation.error.message}`,
+      };
+    }
+
+    addStep(ctx.traceId, {
+      actor: "secretary",
+      event: "FORWARD_TO_DOCTOR_AGENT",
+      ok: true,
+      data: { endpoint: doctorProxy, patient_id: payload.patient_id },
+    });
+
+    console.log("[notify_doctor_agent] sending alert to proxy", doctorProxy, "patient_id=", payload.patient_id);
+
+    try {
+      const res = await fetch(doctorProxy, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      let json: Record<string, unknown> = {};
+      try {
+        json = await res.json();
+      } catch {
+        // ignore parse errors
+      }
+
+      return {
+        error: !res.ok,
+        status: res.status,
+        response: json,
+        message: res.ok
+          ? "Doctor agent accepted alert."
+          : `Doctor agent returned ${res.status}`,
+      };
+    } catch (e) {
+      console.error("[notify_doctor_agent] error:", e);
+      return {
+        error: true,
+        message: `Failed to reach doctor agent: ${e instanceof Error ? e.message : String(e)}`,
+      };
+    }
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Tool: send_health_trigger (Secretary / protocol path)              */
+/* ------------------------------------------------------------------ */
+
+const sendHealthTrigger: ToolDefinition = {
+  name: "send_health_trigger",
+  description:
+    "Send a health request to the Secretary Agent via the trigger API. The Secretary will orchestrate the workflow (e.g. analyze anomaly, contact doctor agent, triage, schedule). Use this when the user wants to send an alert to the doctor, notify the care team, or have a health issue handled by the full pipeline — do NOT use notify_doctor_agent directly; use this so the Secretary runs the correct protocol.",
+  parameters: {
+    type: "object",
+    properties: {
+      user_handle: { type: "string", description: "Patient/user handle (e.g. pari)" },
+      trigger_type: {
+        type: "string",
+        enum: ["health_anomaly", "health_summary", "schedule", "custom"],
+        description: "Type of trigger; use health_anomaly for alerts, custom for freeform",
+      },
+      description: { type: "string", description: "Human-readable description of what the user asked for" },
+      anomaly_score: { type: "number", description: "Optional 0-100 anomaly score if known" },
+      flags: {
+        type: "array",
+        items: { type: "string" },
+        description: "Optional anomaly flags (e.g. SLEEP_DROP, RHR_SPIKE)",
+      },
+    },
+    required: ["user_handle", "description"],
+  },
+
+  async execute(args, ctx) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
+    const triggerUrl = `${baseUrl}/api/trigger`;
+    const userHandle = (args.user_handle as string) || (ctx.triggerData?.user_handle as string) || "unknown";
+    const triggerType = (args.trigger_type as string) || "custom";
+    const description = (args.description as string) || "User requested health workflow";
+
+    const data: Record<string, unknown> = {
+      user_handle: userHandle,
+      ...(args.anomaly_score != null && { anomaly_score: args.anomaly_score }),
+      ...(args.flags && Array.isArray(args.flags) && { flags: args.flags }),
+    };
+
+    addStep(ctx.traceId, {
+      actor: "chat",
+      event: "SEND_HEALTH_TRIGGER",
+      ok: true,
+      data: { triggerUrl, trigger_type: triggerType, user_handle: userHandle },
+    });
+
+    console.log("[send_health_trigger] calling Secretary at", triggerUrl, "trigger_type=", triggerType);
+
+    try {
+      const res = await fetch(triggerUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          trigger_type: triggerType,
+          data,
+          description,
+        }),
+        signal: AbortSignal.timeout(60_000),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        return {
+          error: true,
+          message: (json as { error?: string }).error || `Trigger returned ${res.status}`,
+          status: res.status,
+        };
+      }
+      return {
+        error: false,
+        traceId: (json as { traceId?: string }).traceId,
+        finalDecision: (json as { finalDecision?: string }).finalDecision,
+        toolCallLog: (json as { toolCallLog?: unknown[] }).toolCallLog,
+        provider: (json as { provider?: string }).provider,
+      };
+    } catch (e) {
+      console.error("[send_health_trigger] error:", e);
+      return {
+        error: true,
+        message: e instanceof Error ? e.message : String(e),
+      };
+    }
+  },
+};
+
+/* ------------------------------------------------------------------ */
+/*  Tool: check_doctor_availability (read-only, no booking)            */
+/* ------------------------------------------------------------------ */
+
+const checkDoctorAvailability: ToolDefinition = {
+  name: "check_doctor_availability",
+  description:
+    "Return free time slots on a doctor's calendar without booking. Use this when the user asks for doctor availability (e.g., next 12 hours) instead of immediately scheduling.",
+  parameters: {
+    type: "object",
+    properties: {
+      doctor_handle: {
+        type: "string",
+        description: "Handle of the doctor (e.g. 'dr_smith')",
+      },
+      window_hours: {
+        type: "number",
+        description: "How many hours ahead to search (default 12)",
+      },
+      duration_mins: {
+        type: "number",
+        description: "Meeting duration in minutes (default 30)",
+      },
+      max_slots: {
+        type: "number",
+        description: "Maximum number of slots to return (default 5)",
+      },
+    },
+    required: ["doctor_handle"],
+  },
+
+  async execute(args, ctx) {
+    const handle = (args.doctor_handle as string) || "dr_smith";
+    const windowHours = (args.window_hours as number) || 12;
+    const durationMins = (args.duration_mins as number) || 30;
+    const maxSlots = (args.max_slots as number) || 5;
+
+    const now = new Date();
+    const windowEnd = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
+
+    const human = await prisma.human.findUnique({
+      where: { handle },
+      select: { id: true },
+    });
+
+    if (!human) {
+      return { error: true, message: `Doctor handle '${handle}' not found.` };
+    }
+
+    const slots = await findAvailableSlots(
+      human.id,
+      now.toISOString(),
+      windowEnd.toISOString(),
+      durationMins,
+      maxSlots,
+    );
+
+    addStep(ctx.traceId, {
+      actor: "secretary",
+      event: "DOCTOR_AVAILABILITY_CHECK",
+      ok: true,
+      data: { handle, window_hours: windowHours, slots: slots.length },
+    });
+
+    return {
+      error: false,
+      doctor_handle: handle,
+      window_hours: windowHours,
+      duration_mins: durationMins,
+      available_slots: slots,
+      count: slots.length,
+      message:
+        slots.length > 0
+          ? `Found ${slots.length} available slots for ${handle} in next ${windowHours} hours.`
+          : `No available slots for ${handle} in next ${windowHours} hours.`,
+    };
   },
 };
 
@@ -300,7 +586,8 @@ const scheduleAppointment: ToolDefinition = {
     "slots, books the best available slot, and creates the event on Google Calendar. " +
     "Use this whenever an appointment needs to be scheduled — after triage scoring " +
     "indicates the patient should be seen, or for any general scheduling needs. " +
-    "This tool handles the entire scheduling workflow end-to-end.",
+    "This tool handles the entire scheduling workflow end-to-end. " +
+    "Optionally pass doctor_handle to also add the booking to the doctor's calendar and send a callback.",
   parameters: {
     type: "object",
     properties: {
@@ -330,6 +617,16 @@ const scheduleAppointment: ToolDefinition = {
         type: "string",
         description: "Optional description or notes for the calendar event",
       },
+      doctor_handle: {
+        type: "string",
+        description:
+          "Optional: doctor handle to mirror the booking on the doctor's calendar and notify the doctor agent",
+      },
+      doctor_callback_url: {
+        type: "string",
+        description:
+          "Optional: explicit callback URL for the doctor agent schedule/response endpoint. Defaults to DOCTOR_AGENT_URL + /schedule/response",
+      },
     },
     required: ["user_handle", "title", "urgency"],
   },
@@ -339,6 +636,12 @@ const scheduleAppointment: ToolDefinition = {
     const urgency = (args.urgency as string) || "routine";
     const durationMins = (args.duration_mins as number) || 30;
     const method = (args.method as string) || (urgency === "urgent" ? "in_person" : "telehealth");
+    const doctorHandle = (args.doctor_handle as string) || null;
+    const doctorCallback =
+      (args.doctor_callback_url as string) ||
+      (process.env.DOCTOR_AGENT_URL
+        ? `${process.env.DOCTOR_AGENT_URL.replace(/\/$/, "")}/schedule/response`
+        : null);
 
     addStep(ctx.traceId, {
       actor: "secretary",
@@ -372,6 +675,70 @@ const scheduleAppointment: ToolDefinition = {
       const bookingCall = schedulerResult.toolCallLog.find(
         (tc) => tc.tool === "book_appointment" && tc.result.scheduled,
       );
+
+      // Mirror booking to doctor calendar if requested
+      if (doctorHandle && bookingCall?.result?.booking) {
+        const doc = await prisma.human.findUnique({
+          where: { handle: doctorHandle },
+          select: { id: true },
+        });
+        if (doc) {
+          try {
+            await bookCalendarEvent(doc.id, {
+              summary: bookingCall.result.booking.title || args.title,
+              start: bookingCall.result.booking.start,
+              end: bookingCall.result.booking.end,
+              description:
+                bookingCall.result.booking.description ||
+                args.description ||
+                `Appointment mirrored for ${doctorHandle}`,
+            });
+            addStep(ctx.traceId, {
+              actor: "secretary",
+              event: "DOCTOR_CALENDAR_MIRROR",
+              ok: true,
+              data: { doctor_handle: doctorHandle },
+            });
+          } catch (e) {
+            addStep(ctx.traceId, {
+              actor: "secretary",
+              event: "DOCTOR_CALENDAR_MIRROR",
+              ok: false,
+              data: { doctor_handle: doctorHandle, error: String(e) },
+            });
+          }
+        }
+        // Send callback to doctor agent if endpoint is known
+        if (doctorCallback) {
+          const payload = {
+            proposal_id: "external-booking",
+            patient_id: args.user_handle,
+            accepted: true,
+            selected_slot: bookingCall.result.booking,
+            counter_message: null,
+          };
+          try {
+            await fetch(doctorCallback, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            addStep(ctx.traceId, {
+              actor: "secretary",
+              event: "DOCTOR_CALLBACK_SENT",
+              ok: true,
+              data: { doctor_handle: doctorHandle, callback: doctorCallback },
+            });
+          } catch (e) {
+            addStep(ctx.traceId, {
+              actor: "secretary",
+              event: "DOCTOR_CALLBACK_SENT",
+              ok: false,
+              data: { doctor_handle: doctorHandle, callback: doctorCallback, error: String(e) },
+            });
+          }
+        }
+      }
 
       return {
         error: false,
@@ -485,6 +852,9 @@ export const ALL_TOOLS: ToolDefinition[] = [
   triagePatient,
   getHealthSummary,
   scheduleAppointment,
+  sendHealthTrigger,
+  notifyDoctorAgent,
+  checkDoctorAvailability,
 ];
 
 /**

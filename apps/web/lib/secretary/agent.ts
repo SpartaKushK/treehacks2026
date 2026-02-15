@@ -354,6 +354,7 @@ async function runAgentSDKLoop(
         "mcp__healthcare__triage_patient",
         "mcp__healthcare__get_health_summary",
         "mcp__healthcare__schedule_appointment",
+        "mcp__healthcare__notify_doctor_agent",
         "WebSearch",
         "WebFetch",
       ],

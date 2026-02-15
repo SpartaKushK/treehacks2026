@@ -1,14 +1,15 @@
 """
 API Routes for the Doctor Agent.
 
-POST /alert          — Receive a health alert from a patient device
-GET  /health         — Health check
+POST /agent             — Unified endpoint: action=get_availability | action=alert (agent decides the call)
+GET  /health            — Health check
+POST /alert             — Receive a health alert (legacy; prefer POST /agent with action=alert)
 POST /schedule/response  — Receive scheduling responses from the patient agent (callback)
 """
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -16,6 +17,7 @@ from fastapi.responses import JSONResponse
 from models.schemas import (
     HealthAlert, AlertResponse, SlotResponse, Severity, TriageResult,
     PlatformTriageRequest, PlatformTriageOutcome, AlertType,
+    AgentRequest, AgentRequestGetAvailability, AgentResponseAvailability, AgentResponseAlert,
 )
 from agents.triage import run_triage
 from tools.calendar import get_free_slots, create_event
@@ -90,6 +92,55 @@ async def health_check():
     return {"status": "ok", "service": "doctor-agent", "timestamp": datetime.utcnow().isoformat()}
 
 
+@router.post("/agent")
+async def unified_agent(req: AgentRequest, background_tasks: BackgroundTasks):
+    """
+    Single POST endpoint. Caller sends action + payload; Doctor Agent runs the
+    appropriate logic (e.g. get_availability = read calendar only, alert = full pipeline).
+    """
+    if req.action == "get_availability":
+        opts = req.get_availability or AgentRequestGetAvailability()
+        hours_ahead = opts.hours_ahead
+        max_slots = opts.max_slots
+        # Fetch slots (urgency_hours=0 => start soon; we filter to hours_ahead)
+        raw_slots = get_free_slots(urgency_hours=0, max_slots=max(20, max_slots))
+        now = datetime.now(timezone.utc)
+        cutoff = now + timedelta(hours=hours_ahead)
+        slots_in_window = [s for s in raw_slots if s.start <= cutoff][:max_slots]
+        return AgentResponseAvailability(
+            slots=[
+                {
+                    "start": s.start.isoformat(),
+                    "end": s.end.isoformat(),
+                    "label": s.label,
+                }
+                for s in slots_in_window
+            ]
+        ).model_dump(mode="json")
+
+    if req.action == "alert":
+        if not req.alert:
+            raise HTTPException(status_code=400, detail="action=alert requires 'alert' payload")
+        session_id = str(uuid.uuid4())
+        active_sessions[session_id] = {
+            "session_id": session_id,
+            "patient_id": req.alert.patient_id,
+            "alert_type": req.alert.alert_type,
+            "status": "received",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        background_tasks.add_task(process_alert_background, req.alert, session_id)
+        return AgentResponseAlert(
+            status="processing",
+            triage_severity=Severity.MEDIUM,
+            action_taken=f"Alert received. Processing started (session: {session_id}).",
+            message=f"Your alert has been received and is being reviewed. Session: {session_id}.",
+            session_id=session_id,
+        ).model_dump(mode="json")
+
+    raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
+
+
 @router.post("/alert", response_model=AlertResponse)
 async def receive_alert(alert: HealthAlert, background_tasks: BackgroundTasks):
     """
@@ -98,6 +149,7 @@ async def receive_alert(alert: HealthAlert, background_tasks: BackgroundTasks):
     Returns immediately with a session ID (processing happens asynchronously).
     Poll GET /alert/{session_id}/status for updates, or use webhooks.
     """
+    logger.info(f"[alert] received for patient={alert.patient_id}, type={alert.alert_type}, patient_agent_url={alert.patient_agent_url}")
     session_id = str(uuid.uuid4())
 
     # Create session record
