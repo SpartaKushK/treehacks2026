@@ -31,22 +31,49 @@ export async function handleTriageIntakeAndSchedule(
     },
   });
 
-  // Try LLM, fall back to deterministic
+  // Try Python Doctor Agent first (LangGraph + Claude), then LLM, fall back to deterministic
   let outcome: TriageOutcome;
 
-  const apiKey = provider === "openai"
-    ? process.env.OPENAI_API_KEY
-    : process.env.ANTHROPIC_API_KEY;
+  const doctorAgentUrl = process.env.DOCTOR_AGENT_URL || "http://localhost:8000";
 
-  if (apiKey) {
-    try {
-      outcome = await callLLMForTriage(req, provider, apiKey);
-    } catch {
+  let triageSource = "deterministic_fallback";
+
+  try {
+    outcome = await callDoctorAgent(req, doctorAgentUrl);
+    triageSource = "python_doctor_agent";
+    addStep(traceId, {
+      actor: "dr_smith",
+      event: "DOCTOR_AGENT_USED",
+      ok: true,
+      data: { source: "python_doctor_agent", url: doctorAgentUrl },
+    });
+  } catch (agentErr) {
+    // Doctor Agent unavailable — fall back to in-process LLM / deterministic
+    addStep(traceId, {
+      actor: "dr_smith",
+      event: "DOCTOR_AGENT_FALLBACK",
+      ok: true,
+      data: { reason: String(agentErr) },
+    });
+
+    const apiKey = provider === "openai"
+      ? process.env.OPENAI_API_KEY
+      : process.env.ANTHROPIC_API_KEY;
+
+    if (apiKey) {
+      try {
+        outcome = await callLLMForTriage(req, provider, apiKey);
+        triageSource = `ts_llm_${provider}`;
+      } catch {
+        outcome = generateTriageOutcome(req);
+      }
+    } else {
       outcome = generateTriageOutcome(req);
     }
-  } else {
-    outcome = generateTriageOutcome(req);
   }
+
+  // Attach source tag so the caller can verify which backend handled triage
+  (outcome as Record<string, unknown>)._triage_source = triageSource;
 
   // Simulate multi-turn intake
   addStep(traceId, {
@@ -88,6 +115,37 @@ export async function handleTriageIntakeAndSchedule(
   });
 
   return { ok: true, data: { outcome } };
+}
+
+/**
+ * Call the Python Doctor Agent's /triage/platform bridge endpoint.
+ * The Python agent runs the full LangGraph + Claude triage pipeline and
+ * returns a TriageOutcome in our shared schema format.
+ */
+async function callDoctorAgent(
+  req: TriageRequest,
+  baseUrl: string
+): Promise<TriageOutcome> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+
+  try {
+    const res = await fetch(`${baseUrl}/triage/platform`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Doctor Agent returned ${res.status}`);
+    }
+
+    const data = await res.json();
+    return TriageOutcomeSchema.parse(data);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function callLLMForTriage(
