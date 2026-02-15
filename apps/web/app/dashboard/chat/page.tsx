@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import VoiceChat from "@/components/VoiceChat";
+import VoiceOutput from "@/components/VoiceOutput";
+import LanguageSelector from "@/components/LanguageSelector";
+import { Volume2 } from "lucide-react";
 
 type Mode = "chat" | "review";
 
@@ -28,8 +32,11 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [language, setLanguage] = useState("en");
+  const [autoSpeak, setAutoSpeak] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastAssistantMessageRef = useRef<string>("");
 
   // Per-mode message cache — survives tab switches without re-fetching
   const cacheRef = useRef<Record<Mode, Message[] | null>>({ chat: null, review: null });
@@ -38,6 +45,23 @@ export default function ChatPage() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
+
+  // Auto-speak assistant responses if enabled
+  useEffect(() => {
+    if (!autoSpeak || messages.length === 0) return;
+
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage.role === "assistant" && lastMessage.content) {
+      // Only speak if this is a new message (not the same as last time)
+      if (lastMessage.content !== lastAssistantMessageRef.current && !streaming) {
+        lastAssistantMessageRef.current = lastMessage.content;
+        // Call the global speak function exposed by VoiceChat
+        if (typeof window !== "undefined" && (window as any).__voiceChatSpeak) {
+          (window as any).__voiceChatSpeak(lastMessage.content);
+        }
+      }
+    }
+  }, [messages, autoSpeak, streaming]);
 
   // Load history when mode changes — skip fetch if already cached
   useEffect(() => {
@@ -166,23 +190,52 @@ export default function ChatPage() {
     }
   }
 
+  function handleVoiceTranscript(text: string) {
+    setInput(text);
+    // Optionally auto-send after voice input
+    setTimeout(() => {
+      if (text.trim()) {
+        setInput(text);
+        // Auto-send the voice message after a short delay
+        setTimeout(handleSend, 100);
+      }
+    }, 100);
+  }
+
   return (
     <div className="chat-container">
-      <div className="chat-tabs">
-        <button
-          className={`chat-tab${mode === "chat" ? " active" : ""}`}
-          onClick={() => switchMode("chat")}
-          disabled={streaming}
-        >
-          Chat
-        </button>
-        <button
-          className={`chat-tab${mode === "review" ? " active" : ""}`}
-          onClick={() => switchMode("review")}
-          disabled={streaming}
-        >
-          Health Review
-        </button>
+      <div className="chat-tabs" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem" }}>
+          <button
+            className={`chat-tab${mode === "chat" ? " active" : ""}`}
+            onClick={() => switchMode("chat")}
+            disabled={streaming}
+          >
+            Chat
+          </button>
+          <button
+            className={`chat-tab${mode === "review" ? " active" : ""}`}
+            onClick={() => switchMode("review")}
+            disabled={streaming}
+          >
+            Health Review
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontSize: "0.875rem", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={autoSpeak}
+              onChange={(e) => setAutoSpeak(e.target.checked)}
+              style={{ cursor: "pointer" }}
+            />
+            Auto-speak
+          </label>
+          <LanguageSelector
+            currentLanguage={language}
+            onLanguageChange={setLanguage}
+          />
+        </div>
       </div>
 
       {error && <div className="chat-error">{error}</div>}
@@ -193,23 +246,34 @@ export default function ChatPage() {
         )}
 
         {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`chat-bubble ${
-              msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"
-            } ${
-              msg.role === "assistant" &&
-              streaming &&
-              i === messages.length - 1 &&
-              msg.content
-                ? "chat-cursor"
-                : ""
-            }`}
-          >
-            {msg.role === "assistant" ? (
-              <ReactMarkdown>{msg.content}</ReactMarkdown>
-            ) : (
-              msg.content
+          <div key={i} style={{ position: "relative" }}>
+            <div
+              className={`chat-bubble ${
+                msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"
+              } ${
+                msg.role === "assistant" &&
+                streaming &&
+                i === messages.length - 1 &&
+                msg.content
+                  ? "chat-cursor"
+                  : ""
+              }`}
+            >
+              {msg.role === "assistant" ? (
+                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              ) : (
+                msg.content
+              )}
+            </div>
+            {/* Speaker button for assistant messages */}
+            {msg.role === "assistant" && msg.content && (
+              <div style={{ position: "absolute", top: "8px", right: "8px" }}>
+                <VoiceOutput
+                  text={msg.content}
+                  language={language}
+                  className="opacity-60 hover:opacity-100 transition-opacity"
+                />
+              </div>
             )}
           </div>
         ))}
@@ -225,16 +289,22 @@ export default function ChatPage() {
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="chat-input-bar">
+      <div className="chat-input-bar" style={{ display: "flex", gap: "0.5rem", alignItems: "flex-end" }}>
+        <VoiceChat
+          onTranscript={handleVoiceTranscript}
+          language={language}
+          provider="deepgram"
+        />
         <textarea
           ref={textareaRef}
           className="chat-input"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Type a message..."
+          placeholder="Type a message or use voice..."
           rows={1}
           disabled={streaming}
+          style={{ flex: 1 }}
         />
         <button
           className="btn btn-primary"

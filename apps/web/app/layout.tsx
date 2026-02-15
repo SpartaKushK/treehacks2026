@@ -7,12 +7,13 @@ export const metadata: Metadata = {
   description: "Intelligent health monitoring, proactive alerts, and seamless care coordination for the people you love most.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
+    // @ts-expect-error - ClerkProvider async compatibility
     <ClerkProvider
       appearance={{
         variables: {

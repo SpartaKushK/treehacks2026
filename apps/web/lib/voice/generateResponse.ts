@@ -1,10 +1,26 @@
 import { DOCTOR_CONVERSATION_PROMPT } from "./prompts";
 import type { ClinicalEntities, ConversationMessage } from "./types";
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: "English",
+  es: "Spanish (Español)",
+  fr: "French (Français)",
+  de: "German (Deutsch)",
+  it: "Italian (Italiano)",
+  pt: "Portuguese (Português)",
+  zh: "Chinese (中文)",
+  ja: "Japanese (日本語)",
+  ko: "Korean (한국어)",
+  ar: "Arabic (العربية)",
+  hi: "Hindi (हिन्दी)",
+  ru: "Russian (Русский)",
+};
+
 export async function generateDoctorResponse(
   messages: ConversationMessage[],
   extractedEntities: ClinicalEntities,
   healthContext?: Record<string, unknown>,
+  language: string = "en",
 ): Promise<string> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
@@ -12,6 +28,13 @@ export async function generateDoctorResponse(
   }
 
   let systemPrompt = DOCTOR_CONVERSATION_PROMPT;
+
+  // Add language instruction if not English
+  if (language !== "en") {
+    const languageName = LANGUAGE_NAMES[language] || language;
+    systemPrompt += `\n\nIMPORTANT: The patient speaks ${languageName}. You MUST respond in ${languageName}. All your responses should be in ${languageName}, not English.`;
+  }
+
   if (healthContext) {
     systemPrompt += `\n\nHEALTH_CONTEXT (from patient's wearable data):\n${JSON.stringify(healthContext, null, 2)}`;
   }

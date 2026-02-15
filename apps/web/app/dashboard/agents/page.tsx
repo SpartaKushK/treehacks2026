@@ -19,6 +19,14 @@ interface UnclaimedAgent {
   displayName: string;
 }
 
+interface HeyGenAvatar {
+  avatar_id: string;
+  avatar_name: string;
+  preview_image_url: string;
+  gender?: string;
+  isCustom?: boolean;
+}
+
 function AgentsPageInner() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [unclaimed, setUnclaimed] = useState<UnclaimedAgent[]>([]);
@@ -30,10 +38,30 @@ function AgentsPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Avatar selection for new agents
+  const [avatars, setAvatars] = useState<HeyGenAvatar[]>([]);
+  const [avatarsLoading, setAvatarsLoading] = useState(false);
+  const [selectedAvatarId, setSelectedAvatarId] = useState<string | null>(null);
+  const [selectedAvatarPhoto, setSelectedAvatarPhoto] = useState<string | null>(null);
+
   useEffect(() => {
     if (searchParams.get("create") === "true") setShowCreate(true);
     loadAgents();
   }, [searchParams]);
+
+  // Load avatars when create form is opened
+  useEffect(() => {
+    if (showCreate && avatars.length === 0 && !avatarsLoading) {
+      setAvatarsLoading(true);
+      fetch("/api/heygen/avatars")
+        .then((r) => r.json())
+        .then((data) => {
+          setAvatars(data.avatars || []);
+          setAvatarsLoading(false);
+        })
+        .catch(() => setAvatarsLoading(false));
+    }
+  }, [showCreate, avatars.length, avatarsLoading]);
 
   async function loadAgents() {
     setLoading(true);
@@ -74,15 +102,27 @@ function AgentsPageInner() {
     const res = await fetch("/api/agents", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ handle: newHandle.trim(), displayName: newName.trim() }),
+      body: JSON.stringify({
+        handle: newHandle.trim(),
+        displayName: newName.trim(),
+        heygenAvatarId: selectedAvatarId,
+        avatarPhotoUrl: selectedAvatarPhoto,
+      }),
     });
     if (res.ok) {
       setNewHandle("");
       setNewName("");
+      setSelectedAvatarId(null);
+      setSelectedAvatarPhoto(null);
       setShowCreate(false);
       await loadAgents();
     }
     setCreating(false);
+  }
+
+  function selectAvatar(avatar: HeyGenAvatar) {
+    setSelectedAvatarId(avatar.avatar_id);
+    setSelectedAvatarPhoto(avatar.preview_image_url);
   }
 
   async function claimAgent(handle: string) {
@@ -99,11 +139,11 @@ function AgentsPageInner() {
       <TopBar title="Care Team" />
       <div className="dashboard-content">
         {/* Header */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+        <div style={{ marginBottom: "2rem" }}>
+          <h1 style={{ fontSize: "2rem", fontWeight: 700, marginBottom: "0.5rem", lineHeight: "1.3" }}>
             Care Team
           </h1>
-          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+          <p style={{ fontSize: "1.125rem", color: "var(--text-dim)", lineHeight: 1.6 }}>
             Set up and manage the AI agents that look after your patients
           </p>
         </div>
@@ -132,7 +172,7 @@ function AgentsPageInner() {
           <span className="agent-section-line" />
           <button
             className="btn btn-primary"
-            style={{ fontSize: "0.75rem", padding: "0.375rem 0.875rem" }}
+            style={{ fontSize: "1rem", padding: "0.75rem 1.5rem", minHeight: "48px" }}
             onClick={() => setShowCreate(!showCreate)}
           >
             + Add Care Agent
@@ -143,35 +183,138 @@ function AgentsPageInner() {
           <div
             style={{
               marginBottom: "1.5rem",
-              padding: "1.25rem",
+              padding: "1.5rem",
               background: "var(--bg-card)",
               border: "1px solid var(--border)",
               borderRadius: "10px",
             }}
           >
-            <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
+            <h3 style={{ fontSize: "1.125rem", fontWeight: 700, marginBottom: "0.25rem", lineHeight: "1.4" }}>
               Add New Care Agent
-            </div>
-            <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end" }}>
-              <div className="field">
-                <label>Handle</label>
+            </h3>
+            <p style={{ fontSize: "0.875rem", color: "var(--text-dim)", marginBottom: "1.25rem", lineHeight: "1.5" }}>
+              Create an AI assistant to help coordinate care for your patients
+            </p>
+            <div className="row" style={{ gap: "0.75rem", alignItems: "flex-start" }}>
+              <div className="field" style={{ flex: 1 }}>
+                <label style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  Unique Handle
+                </label>
                 <input
-                  placeholder="my_agent"
+                  placeholder="my_care_agent"
                   value={newHandle}
                   onChange={(e) => setNewHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                  style={{ marginBottom: "0.5rem" }}
                 />
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", lineHeight: "1.5", margin: 0 }}>
+                  A unique identifier like a username. Use letters, numbers, and underscores only.
+                  <br />
+                  <span style={{ fontFamily: "monospace", fontSize: "0.8125rem" }}>Example: patient_care_bot</span>
+                </p>
               </div>
-              <div className="field">
-                <label>Display Name</label>
+              <div className="field" style={{ flex: 1 }}>
+                <label style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.5rem" }}>
+                  Display Name (Visible to Users)
+                </label>
                 <input
-                  placeholder="My Agent"
+                  placeholder="Patient Care Assistant"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  style={{ marginBottom: "0.5rem" }}
                 />
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", lineHeight: "1.5", margin: 0 }}>
+                  The friendly name people will see. Can include spaces and any characters.
+                  <br />
+                  <span style={{ fontFamily: "monospace", fontSize: "0.8125rem" }}>Example: My Care Agent</span>
+                </p>
               </div>
-              <button className="btn btn-primary" onClick={createAgent} disabled={creating}>
-                {creating ? <><span className="spinner" /> Creating...</> : "Create"}
+              <button
+                className="btn btn-primary"
+                onClick={createAgent}
+                disabled={creating}
+                style={{ marginTop: "1.875rem", minWidth: "120px" }}
+              >
+                {creating ? <><span className="spinner" /> Creating...</> : "Create Agent"}
               </button>
+            </div>
+
+            {/* Avatar Picker */}
+            <div style={{ marginTop: "1.5rem", paddingTop: "1.5rem", borderTop: "1px solid var(--border)" }}>
+              <label style={{ fontSize: "0.95rem", fontWeight: 600, marginBottom: "0.75rem", display: "block" }}>
+                Choose Avatar (Optional)
+              </label>
+              {avatarsLoading ? (
+                <div style={{ padding: "1rem", textAlign: "center" }}>
+                  <span className="spinner" />
+                  <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", marginTop: "0.5rem", lineHeight: "1.5" }}>Loading avatars...</p>
+                </div>
+              ) : avatars.length === 0 ? (
+                <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", lineHeight: "1.5" }}>
+                  No avatars available. You can select an avatar after creating the agent.
+                </p>
+              ) : (
+                <>
+                  {selectedAvatarPhoto && (
+                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "1rem", padding: "0.75rem", background: "var(--bg)", borderRadius: "8px", border: "2px solid var(--accent)" }}>
+                      <img
+                        src={selectedAvatarPhoto}
+                        alt="Selected avatar"
+                        style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover" }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: "0.875rem", fontWeight: 600 }}>Avatar Selected</div>
+                        <div style={{ fontSize: "0.75rem", color: "var(--text-dim)" }}>
+                          {avatars.find(a => a.avatar_id === selectedAvatarId)?.avatar_name || "Custom Avatar"}
+                        </div>
+                      </div>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: "0.75rem", padding: "0.25rem 0.75rem" }}
+                        onClick={() => {
+                          setSelectedAvatarId(null);
+                          setSelectedAvatarPhoto(null);
+                        }}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(80px, 1fr))", gap: "0.5rem", maxHeight: 240, overflowY: "auto", padding: "0.25rem" }}>
+                    {avatars.slice(0, 12).map((avatar) => (
+                      <div
+                        key={avatar.avatar_id}
+                        onClick={() => selectAvatar(avatar)}
+                        style={{
+                          cursor: "pointer",
+                          borderRadius: "0.5rem",
+                          border: avatar.avatar_id === selectedAvatarId ? "2px solid var(--accent)" : "2px solid transparent",
+                          padding: "0.25rem",
+                          textAlign: "center",
+                          transition: "transform 0.15s, border-color 0.15s",
+                          background: avatar.avatar_id === selectedAvatarId ? "var(--bg)" : "transparent",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.transform = "scale(1.05)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
+                      >
+                        <img
+                          src={avatar.preview_image_url}
+                          alt={avatar.avatar_name}
+                          loading="lazy"
+                          style={{ width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: "0.375rem" }}
+                        />
+                        <div style={{ fontSize: "0.8125rem", color: "var(--text-dim)", marginTop: "0.25rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: "1.4" }}>
+                          {avatar.avatar_name}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {avatars.length > 12 && (
+                    <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", marginTop: "0.5rem", textAlign: "center", lineHeight: "1.5" }}>
+                      Showing 12 of {avatars.length} avatars. More available in agent settings after creation.
+                    </p>
+                  )}
+                </>
+              )}
             </div>
           </div>
         )}
@@ -203,7 +346,7 @@ function AgentsPageInner() {
               <span className="agent-section-line" />
               <span className="agent-section-count">{unclaimed.length} available</span>
             </div>
-            <p style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
+            <p style={{ fontSize: "0.8125rem", color: "var(--text-dim)", marginBottom: "0.75rem", lineHeight: "1.5" }}>
               Claim a demo care agent to link it to your account and start coordinating care.
             </p>
             <div className="agent-grid">
@@ -221,8 +364,8 @@ function AgentsPageInner() {
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: "0.875rem" }}>{a.displayName}</div>
-                    <div style={{ fontFamily: "monospace", fontSize: "0.7rem", color: "var(--text-dim)" }}>@{a.handle}</div>
+                    <div style={{ fontWeight: 600, fontSize: "0.875rem", lineHeight: "1.4" }}>{a.displayName}</div>
+                    <div style={{ fontFamily: "monospace", fontSize: "0.8125rem", color: "var(--text-dim)", lineHeight: "1.4" }}>@{a.handle}</div>
                   </div>
                   <button
                     className="agent-copy-btn"

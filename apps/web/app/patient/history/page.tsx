@@ -66,20 +66,20 @@ export default function HealthHistoryPage() {
     const vals = title === "Heart Rate" ? data.map(d => d.heartRate) : title === "Steps" ? data.map(d => d.steps) : data.map(d => d.sleepHours);
     const a = title === "Sleep" ? parseFloat((vals.reduce((s, v) => s + v, 0) / vals.length).toFixed(1)) : avg(vals as number[]);
     return (
-      <Card style={{ border: "2px solid #f1f5f9", borderRadius: 16 }}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">{icon}<span className="font-bold" style={{ color: "#1e293b" }}>{title}</span></div>
+      <Card style={{ border: "3px solid #e2e8f0", borderRadius: 20 }}>
+        <CardContent className="p-7">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">{icon}<span className="font-bold" style={{ color: "#1e293b", fontSize: "1.25rem" }}>{title}</span></div>
             <div className="flex items-center gap-2">
-              <span className="text-2xl font-bold" style={{ color: "#0f172a" }}>{a}</span>
-              <span className="text-sm" style={{ color: "#94a3b8" }}>{unit}</span>
+              <span className="font-bold" style={{ color: "#0f172a", fontSize: "2rem" }}>{a}</span>
+              <span style={{ color: "#64748b", fontSize: "1rem" }}>{unit}</span>
               <TrendIcon t={trend(vals as number[])} />
             </div>
           </div>
           <Bars data={vals as number[]} max={max} color={color} />
-          <div className="flex justify-between mt-2">
-            <span className="text-xs" style={{ color: "#94a3b8" }}>{data[0]?.date}</span>
-            <span className="text-xs" style={{ color: "#94a3b8" }}>{data[data.length - 1]?.date}</span>
+          <div className="flex justify-between mt-3">
+            <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{data[0]?.date}</span>
+            <span style={{ color: "#94a3b8", fontSize: "0.875rem" }}>{data[data.length - 1]?.date}</span>
           </div>
         </CardContent>
       </Card>
@@ -87,12 +87,15 @@ export default function HealthHistoryPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-3xl font-bold" style={{ color: "#0f172a" }}>History</h1>
+    <div className="space-y-8" style={{ padding: "0.5rem" }}>
+      <div style={{ textAlign: "center" }}>
+        <h1 className="font-bold" style={{ color: "#0f172a", fontSize: "2rem", marginBottom: "0.5rem" }}>My Past Health</h1>
+        <p style={{ color: "#64748b", fontSize: "1.125rem" }}>See how you've been doing</p>
+      </div>
       <Tabs defaultValue="7days">
-        <TabsList className="w-full" style={{ background: "#f1f5f9" }}>
-          <TabsTrigger value="7days" className="flex-1 text-base">7 Days</TabsTrigger>
-          <TabsTrigger value="30days" className="flex-1 text-base">30 Days</TabsTrigger>
+        <TabsList className="w-full" style={{ background: "#f1f5f9", padding: "0.375rem", borderRadius: 16 }}>
+          <TabsTrigger value="7days" className="flex-1" style={{ fontSize: "1.125rem", fontWeight: 600, padding: "0.875rem" }}>Last Week</TabsTrigger>
+          <TabsTrigger value="30days" className="flex-1" style={{ fontSize: "1.125rem", fontWeight: 600, padding: "0.875rem" }}>Last Month</TabsTrigger>
         </TabsList>
         {["7days", "30days"].map(p => (
           <TabsContent key={p} value={p} className="space-y-4">

@@ -10,6 +10,7 @@ import { DOCTOR_PROFILE } from "@/lib/avatarProfiles";
 import LiveTranscript from "@/components/LiveTranscript";
 import ClinicalSidebar from "@/components/ClinicalSidebar";
 import RedFlagAlert from "@/components/RedFlagAlert";
+import LanguageSelector from "@/components/LanguageSelector";
 import { VoiceEmotion } from "@heygen/streaming-avatar";
 import type {
   ConversationMessage,
@@ -40,6 +41,7 @@ export default function VoiceCallPage() {
   const [callStartTime, setCallStartTime] = useState<number>(0);
   const [callDuration, setCallDuration] = useState(0);
   const [automatedActions, setAutomatedActions] = useState<{ label: string; done: boolean }[]>([]);
+  const [language, setLanguage] = useState("en");
 
   // Track whether we're currently processing to avoid duplicate requests
   const processingRef = useRef(false);
@@ -131,6 +133,7 @@ export default function VoiceCallPage() {
             messages: updatedMessages,
             extractedEntities: entitiesRef.current,
             healthContext,
+            language,
           }),
         });
 
@@ -280,12 +283,18 @@ export default function VoiceCallPage() {
               Voice call with {DOCTOR_PROFILE.name}
             </p>
           </div>
-          {callStartTime > 0 && (
-            <div className="flex items-center gap-1.5" style={{ color: "#64748b" }}>
-              <Clock className="w-4 h-4" />
-              <span className="text-sm font-mono">{formatDuration(callDuration)}</span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            <LanguageSelector
+              currentLanguage={language}
+              onLanguageChange={setLanguage}
+            />
+            {callStartTime > 0 && (
+              <div className="flex items-center gap-1.5" style={{ color: "#64748b" }}>
+                <Clock className="w-4 h-4" />
+                <span className="text-sm font-mono">{formatDuration(callDuration)}</span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Main content: Avatar + Controls */}
