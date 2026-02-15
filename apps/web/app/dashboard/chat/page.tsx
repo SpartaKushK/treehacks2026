@@ -244,7 +244,7 @@ export default function ChatPage() {
         )}
 
         {messages.map((msg, i) => (
-          <div key={i} style={{ position: "relative", alignSelf: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "72%" }}>
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: msg.role === "user" ? "flex-end" : "flex-start", maxWidth: "72%" }}>
             <div
               className={`chat-bubble ${
                 msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"
@@ -265,7 +265,7 @@ export default function ChatPage() {
             </div>
             {/* Speaker button for assistant messages */}
             {msg.role === "assistant" && msg.content && (
-              <div style={{ position: "absolute", top: "8px", right: "8px" }}>
+              <div style={{ marginTop: "4px" }}>
                 <VoiceOutput
                   text={msg.content}
                   language={language}
