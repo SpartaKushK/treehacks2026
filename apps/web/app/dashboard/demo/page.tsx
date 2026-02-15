@@ -196,6 +196,7 @@ export default function DemoPage() {
         {/* Narrative intro */}
         <div style={{ padding: "1rem 1.25rem", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "10px", marginBottom: "1.5rem", fontSize: "0.85rem", lineHeight: 1.6, color: "var(--text-dim)" }}>
           Meet <strong style={{ color: "var(--text)" }}>Pari</strong>, a 72-year-old grandmother who lives independently. Her family wants peace of mind. Her doctor wants timely data. CareSync connects them through AI agents that negotiate, monitor, and act &mdash; so Pari can focus on what matters: living her life.
+          <p style={{ marginTop: "0.75rem", marginBottom: 0, fontSize: "0.75rem", opacity: 0.9 }}>This demo uses <strong>seed data</strong> (Pari, Alex, Dr. Smith, and sample health metrics) &mdash; not real patient data.</p>
         </div>
 
         {/* Scenario 1: Booking a Visit */}

@@ -7,13 +7,50 @@ import {
   formatHistoryForLLM,
   addMessage,
 } from "@/lib/memory";
+import {
+  toAnthropicTools,
+  executeTool,
+  type ToolContext,
+} from "@/lib/secretary/tools";
+import { startTrace, addStep } from "@/lib/trace";
 
-const SYSTEM_PROMPT = `You are a helpful personal AI assistant. You are friendly, concise, and helpful. You can help with a wide range of tasks including answering questions, brainstorming, writing, analysis, and more. Keep your responses clear and well-structured.`;
+/* ------------------------------------------------------------------ */
+/*  System prompt — now healthcare-aware with tool access               */
+/* ------------------------------------------------------------------ */
+
+function buildSystemPrompt(userHandle: string): string {
+  return `You are a personal health management AI assistant. You are friendly, concise, and helpful.
+
+## Current User
+The current user's handle is "${userHandle}". ALWAYS use this handle when calling any tool — never ask the user for their handle.
+
+## Your Capabilities
+You have access to tools that let you:
+1. **Schedule appointments** — Check the user's Google Calendar, find available slots, and book appointments via the schedule_appointment tool.
+2. **Analyze health anomalies** — Evaluate wearable health data (heart rate, sleep, steps) for concerning patterns via the analyze_anomaly tool.
+3. **Get health summaries** — Retrieve a 30-day health trend summary via the get_health_summary tool.
+4. **Triage patients** — Score urgency and determine if a clinic visit is needed via the triage_patient tool.
+5. **Look up clinical evidence** — Search PubMed and clinical guidelines via the lookup_clinical_evidence tool.
+
+## How to Use Tools
+- When the user asks to schedule something, check availability, or book an appointment → use **schedule_appointment** with user_handle="${userHandle}"
+- When the user shares health data or asks about an anomaly → use **analyze_anomaly** with user_handle="${userHandle}"
+- When the user asks about their health trends → use **get_health_summary** with patient_handle="${userHandle}"
+- When the user asks about clinical evidence or medical studies → use **lookup_clinical_evidence**
+
+## Important Rules
+- Always use your tools when the user asks for something you can do with them. NEVER say you don't have access to calendars or health tools.
+- NEVER ask for the user's handle — you already know it is "${userHandle}".
+- Keep your responses clear and well-structured.
+- You are NOT a doctor — tools provide analysis, not diagnoses.`;
+}
+
+/* ------------------------------------------------------------------ */
+/*  POST /api/chat — tool-calling chat with SSE streaming               */
+/* ------------------------------------------------------------------ */
 
 export async function POST(req: NextRequest) {
   try {
-    // First check Clerk session — this covers signed-in users who may not
-    // have a Human agent yet (getCurrentUser requires a linked Human row).
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -35,7 +72,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use the agent handle if available, otherwise fall back to Clerk user ID
     const user = await getCurrentUser();
     const handle = user?.handle ?? userId;
     const convoId = await getOrCreateConversation("chat", handle);
@@ -47,7 +83,7 @@ export async function POST(req: NextRequest) {
       metadata: { timestamp: new Date().toISOString() },
     });
 
-    // Build messages array for Anthropic
+    // Build messages array
     const history = await getHistory("chat", handle);
     const formatted = formatHistoryForLLM(history);
 
@@ -67,7 +103,132 @@ export async function POST(req: NextRequest) {
       messages.shift();
     }
 
-    const anthropicRes = await fetch("https://api.anthropic.com/v1/messages", {
+    // Tool context for executing tools
+    const traceId = startTrace({ provider: "claude", title: `Chat: ${handle}` });
+    const toolCtx: ToolContext = {
+      traceId,
+      provider: "claude",
+      triggerData: { user_handle: handle },
+    };
+
+    // Get tools in Anthropic format
+    const tools = toAnthropicTools();
+
+    // Run the tool-calling loop (non-streaming) then stream the final response
+    // We need to handle tool calls first, then stream the final text
+    const loopMessages: Array<Record<string, unknown>> = [
+      ...messages.map((m) => ({ role: m.role, content: m.content })),
+    ];
+
+    const MAX_TOOL_TURNS = 6;
+    let toolCallsMade = false;
+
+    for (let turn = 0; turn < MAX_TOOL_TURNS; turn++) {
+      // Non-streaming call to check for tool use
+      const checkRes = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-5-20250929",
+          max_tokens: 2048,
+          system: buildSystemPrompt(handle),
+          messages: loopMessages,
+          tools,
+        }),
+      });
+
+      if (!checkRes.ok) {
+        const errText = await checkRes.text();
+        console.error("[POST /api/chat] Anthropic error:", errText);
+        return NextResponse.json(
+          { error: "Anthropic API error", detail: errText },
+          { status: checkRes.status },
+        );
+      }
+
+      const data = await checkRes.json();
+      const content = data.content as Array<Record<string, unknown>>;
+
+      if (!content || content.length === 0) {
+        break;
+      }
+
+      // Check if there are tool_use blocks
+      const toolUseBlocks = content.filter(
+        (b) => b.type === "tool_use",
+      );
+
+      if (toolUseBlocks.length === 0) {
+        // No tool calls — extract text and stream it to client
+        const textParts = content
+          .filter((b) => b.type === "text")
+          .map((b) => b.text as string);
+        const finalText = textParts.join("\n");
+
+        // Persist assistant response
+        if (finalText) {
+          await addMessage(convoId, {
+            role: "assistant",
+            content: finalText,
+            metadata: { timestamp: new Date().toISOString(), toolCallsMade },
+          });
+        }
+
+        // Return as SSE stream for frontend compatibility
+        return createTextSSEResponse(finalText);
+      }
+
+      // There are tool calls — execute them
+      toolCallsMade = true;
+
+      // Add the assistant's response (with tool_use blocks) to messages
+      loopMessages.push({ role: "assistant", content });
+
+      // Execute each tool and build tool results
+      const toolResults: Array<Record<string, unknown>> = [];
+
+      for (const toolUse of toolUseBlocks) {
+        const toolName = toolUse.name as string;
+        const toolInput = toolUse.input as Record<string, unknown>;
+        const toolId = toolUse.id as string;
+
+        addStep(traceId, {
+          actor: "chat",
+          event: "TOOL_CALL",
+          ok: true,
+          data: { tool: toolName, args: toolInput },
+        });
+
+        console.log(`[Chat] Calling tool: ${toolName}`, JSON.stringify(toolInput).slice(0, 200));
+
+        const result = await executeTool(toolName, toolInput, toolCtx);
+
+        addStep(traceId, {
+          actor: toolName,
+          event: "TOOL_RESULT",
+          ok: !result.error,
+          data: result,
+        });
+
+        console.log(`[Chat] Tool result: ${toolName}`, JSON.stringify(result).slice(0, 200));
+
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: toolId,
+          content: JSON.stringify(result),
+        });
+      }
+
+      // Add tool results and continue the loop
+      loopMessages.push({ role: "user", content: toolResults });
+    }
+
+    // If we exhausted tool turns, make one final call without tools to get a text summary
+    const finalRes = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -77,91 +238,37 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         model: "claude-sonnet-4-5-20250929",
         max_tokens: 2048,
-        stream: true,
         system: SYSTEM_PROMPT,
-        messages,
+        messages: loopMessages,
       }),
     });
 
-    if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      console.error("[POST /api/chat] Anthropic error:", errText);
+    if (!finalRes.ok) {
+      const errText = await finalRes.text();
+      console.error("[POST /api/chat] Anthropic final error:", errText);
       return NextResponse.json(
         { error: "Anthropic API error", detail: errText },
-        { status: anthropicRes.status },
+        { status: finalRes.status },
       );
     }
 
-    // Stream Anthropic SSE through to the client
-    let fullText = "";
-    const reader = anthropicRes.body!.getReader();
-    const decoder = new TextDecoder();
+    const finalData = await finalRes.json();
+    const finalContent = finalData.content as Array<Record<string, unknown>>;
+    const finalText = (finalContent || [])
+      .filter((b) => b.type === "text")
+      .map((b) => b.text as string)
+      .join("\n");
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          let buffer = "";
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+    // Persist
+    if (finalText) {
+      await addMessage(convoId, {
+        role: "assistant",
+        content: finalText,
+        metadata: { timestamp: new Date().toISOString(), toolCallsMade },
+      });
+    }
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            // Keep the last potentially incomplete line in the buffer
-            buffer = lines.pop() || "";
-
-            for (const line of lines) {
-              if (line.startsWith("data: ")) {
-                const data = line.slice(6);
-                if (data === "[DONE]") continue;
-                try {
-                  const parsed = JSON.parse(data);
-                  if (
-                    parsed.type === "content_block_delta" &&
-                    parsed.delta?.type === "text_delta"
-                  ) {
-                    fullText += parsed.delta.text;
-                  }
-                } catch {
-                  // skip non-JSON lines
-                }
-              }
-              // Forward the raw line to the client
-              controller.enqueue(
-                new TextEncoder().encode(line + "\n"),
-              );
-            }
-          }
-          // Flush remaining buffer
-          if (buffer.trim()) {
-            controller.enqueue(
-              new TextEncoder().encode(buffer + "\n"),
-            );
-          }
-          controller.close();
-        } catch (err) {
-          console.error("[POST /api/chat] stream error:", err);
-          controller.error(err);
-        } finally {
-          // Persist assistant response
-          if (fullText) {
-            await addMessage(convoId, {
-              role: "assistant",
-              content: fullText,
-              metadata: { timestamp: new Date().toISOString() },
-            });
-          }
-        }
-      },
-    });
-
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      },
-    });
+    return createTextSSEResponse(finalText || "I completed the task but couldn't generate a summary.");
   } catch (err) {
     console.error("[POST /api/chat]", err);
     return NextResponse.json(
@@ -172,4 +279,51 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+}
+
+/* ------------------------------------------------------------------ */
+/*  Helper: wrap a final text string as an SSE stream for the frontend */
+/* ------------------------------------------------------------------ */
+
+function createTextSSEResponse(text: string): Response {
+  const encoder = new TextEncoder();
+
+  // Simulate the Anthropic SSE format that the frontend expects
+  const events = [
+    `event: message_start\ndata: ${JSON.stringify({ type: "message_start", message: { id: "msg_chat", type: "message", role: "assistant", content: [] } })}\n\n`,
+    `event: content_block_start\ndata: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "text", text: "" } })}\n\n`,
+  ];
+
+  // Send text in chunks for a streaming feel
+  const CHUNK_SIZE = 20;
+  for (let i = 0; i < text.length; i += CHUNK_SIZE) {
+    const chunk = text.slice(i, i + CHUNK_SIZE);
+    events.push(
+      `event: content_block_delta\ndata: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: chunk } })}\n\n`,
+    );
+  }
+
+  events.push(
+    `event: content_block_stop\ndata: ${JSON.stringify({ type: "content_block_stop", index: 0 })}\n\n`,
+    `event: message_delta\ndata: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "end_turn" } })}\n\n`,
+    `event: message_stop\ndata: ${JSON.stringify({ type: "message_stop" })}\n\n`,
+  );
+
+  const body = events.join("");
+
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(body));
+        controller.close();
+      },
+    }),
+    {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    },
+  );
 }

@@ -9,11 +9,10 @@
 import { handleHealthAnomalyAlert } from "../capabilities/healthAnomalyAlert";
 import { handleTriageIntakeAndSchedule } from "../capabilities/triageIntakeAndSchedule";
 import { handleCapability } from "../people";
-import { findAvailableSlots, bookCalendarEvent, getBusySlots } from "../google-calendar";
 import { lookupClinicalEvidence } from "../clinical/evidenceService";
-import { prisma } from "../store";
 import { addStep } from "../trace";
 import { saveToolInteraction, type AgentType } from "../memory";
+import { runSchedulerAgent, type SchedulerInput } from "../agents/SchedulerAgent";
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -283,124 +282,61 @@ const scheduleAppointment: ToolDefinition = {
   },
 
   async execute(args, ctx) {
-    const handle = args.user_handle as string;
+    const handle = (args.user_handle as string) || (ctx.triggerData?.user_handle as string) || "unknown";
     const urgency = (args.urgency as string) || "routine";
     const durationMins = (args.duration_mins as number) || 30;
     const method = (args.method as string) || (urgency === "urgent" ? "in_person" : "telehealth");
 
-    // 1. Resolve user
-    const human = await prisma.human.findUnique({
-      where: { handle },
-      select: { id: true },
-    });
-    if (!human) {
-      return { error: true, message: `User '${handle}' not found` };
-    }
-
-    // 2. Determine search window based on urgency
-    const now = new Date();
-    const dayOffset = urgency === "urgent" ? 0 : urgency === "soon" ? 1 : 3;
-    const windowStart = new Date(now);
-    windowStart.setDate(windowStart.getDate() + dayOffset);
-    const windowEnd = new Date(now);
-    windowEnd.setDate(windowEnd.getDate() + dayOffset + 7);
-
     addStep(ctx.traceId, {
-      actor: "scheduling_agent",
-      event: "CALENDAR_SEARCH_START",
+      actor: "secretary",
+      event: "DELEGATE_TO_SCHEDULER_AGENT",
       ok: true,
-      data: {
-        user: handle,
-        urgency,
-        windowStart: windowStart.toISOString(),
-        windowEnd: windowEnd.toISOString(),
-        durationMins,
-      },
+      data: { handle, urgency, durationMins, method },
     });
 
-    // 3. Find available slots from Google Calendar + local events
-    const availableSlots = await findAvailableSlots(
-      human.id,
-      windowStart.toISOString(),
-      windowEnd.toISOString(),
-      durationMins,
-      5
-    );
+    try {
+      // Delegate to the SchedulerAgent sub-agent
+      const schedulerResult = await runSchedulerAgent(
+        {
+          user_handle: handle,
+          title: (args.title as string) || "Medical Appointment",
+          urgency: urgency as "routine" | "soon" | "urgent",
+          duration_mins: durationMins,
+          method: method as "in_person" | "telehealth",
+          description: args.description as string | undefined,
+        },
+        {
+          traceId: ctx.traceId,
+          provider: ctx.provider,
+        },
+      );
 
-    // Also get current busy events for context
-    const busyEvents = await getBusySlots(
-      human.id,
-      windowStart.toISOString(),
-      windowEnd.toISOString(),
-    );
+      if (schedulerResult.error) {
+        return { error: true, message: schedulerResult.finalDecision };
+      }
 
-    addStep(ctx.traceId, {
-      actor: "scheduling_agent",
-      event: "AVAILABILITY_FOUND",
-      ok: true,
-      data: {
-        freeSlots: availableSlots.length,
-        busyEvents: busyEvents.length,
-        slots: availableSlots,
-      },
-    });
+      // Extract booking info from the scheduler's tool call log
+      const bookingCall = schedulerResult.toolCallLog.find(
+        (tc) => tc.tool === "book_appointment" && tc.result.scheduled,
+      );
 
-    if (availableSlots.length === 0) {
       return {
         error: false,
-        scheduled: false,
-        message: `No available ${durationMins}-minute slots found in the next ${dayOffset + 7} days for '${handle}'. The user has ${busyEvents.length} events in that window.`,
-        busy_event_count: busyEvents.length,
+        scheduled: !!bookingCall,
+        finalDecision: schedulerResult.finalDecision,
+        booking: bookingCall?.result?.booking || null,
+        google_calendar: bookingCall?.result?.google_calendar || null,
+        scheduler_turns: schedulerResult.turns,
+        scheduler_tool_calls: schedulerResult.toolCallLog.map((tc) => tc.tool),
+        message: schedulerResult.finalDecision,
+      };
+    } catch (e) {
+      console.error("[schedule_appointment] SchedulerAgent delegation error:", e);
+      return {
+        error: true,
+        message: `Scheduler agent error: ${e instanceof Error ? e.message : String(e)}`,
       };
     }
-
-    // 4. Book the best (first available) slot
-    const chosenSlot = availableSlots[0];
-
-    const bookingResult = await bookCalendarEvent(human.id, {
-      summary: args.title as string,
-      start: chosenSlot.start,
-      end: chosenSlot.end,
-      description: (args.description as string) || `${args.title}. Urgency: ${urgency}. Method: ${method}.`,
-    });
-
-    addStep(ctx.traceId, {
-      actor: "scheduling_agent",
-      event: "APPOINTMENT_BOOKED",
-      ok: true,
-      data: {
-        slot: chosenSlot,
-        method,
-        localId: bookingResult.localId,
-        googleEventId: bookingResult.googleEventId,
-        createdOnGoogle: !!bookingResult.googleEventId,
-      },
-    });
-
-    const output = {
-      error: false,
-      scheduled: true,
-      booking: {
-        start: chosenSlot.start,
-        end: chosenSlot.end,
-        method,
-        title: args.title,
-      },
-      google_calendar: bookingResult.googleEventId
-        ? { synced: true, event_id: bookingResult.googleEventId }
-        : { synced: false, reason: "Google Calendar not connected — saved locally" },
-      alternative_slots: availableSlots.slice(1, 4),
-      message: `Appointment booked: ${args.title} on ${new Date(chosenSlot.start).toLocaleDateString()} at ${new Date(chosenSlot.start).toLocaleTimeString()} (${method}).`,
-    };
-
-    // Save to scheduler agent's memory
-    try {
-      await saveToolInteraction("scheduler", handle, "schedule_appointment", args, output);
-    } catch (e) {
-      console.warn("[schedule_appointment] Failed to save memory:", e);
-    }
-
-    return output;
   },
 };
 
