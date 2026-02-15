@@ -4,6 +4,8 @@ import { triggerAnomalyPipeline } from "@/lib/anomaly/triggerPipeline";
 import type { Provider } from "@/lib/llm";
 import type { HealthAnomalyAlert } from "@people/shared";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   await ensureSeed();
 

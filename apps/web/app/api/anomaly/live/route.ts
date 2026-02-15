@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/store";
 import { ensureSeed } from "@/lib/ensureSeed";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   await ensureSeed();
   const { userId } = await auth();
