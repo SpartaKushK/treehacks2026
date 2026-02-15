@@ -7,22 +7,29 @@ import nacl from "tweetnacl";
 
 /** GET /api/agents — list current user's agents + unclaimed demo agents */
 export async function GET() {
-  await ensureSeed();
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  try {
+    await ensureSeed();
+    const { userId } = await auth();
+    if (!userId) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const agents = await prisma.human.findMany({
-    where: { clerkUserId: userId },
-    include: { capabilities: true, policies: true },
-  });
+    const agents = await prisma.human.findMany({
+      where: { clerkUserId: userId },
+      include: { capabilities: true, policies: true },
+    });
 
-  // Also list unclaimed demo agents
-  const unclaimed = await prisma.human.findMany({
-    where: { clerkUserId: null },
-    select: { handle: true, displayName: true },
-  });
+    const unclaimed = await prisma.human.findMany({
+      where: { clerkUserId: null },
+      select: { handle: true, displayName: true },
+    });
 
-  return NextResponse.json({ agents, unclaimed });
+    return NextResponse.json({ agents, unclaimed });
+  } catch (err) {
+    console.error("[GET /api/agents]", err);
+    return NextResponse.json(
+      { error: "server_error", message: err instanceof Error ? err.message : "Unknown error" },
+      { status: 500 }
+    );
+  }
 }
 
 /** POST /api/agents — create new agent or claim existing one */

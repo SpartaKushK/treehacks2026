@@ -37,11 +37,35 @@ function AgentsPageInner() {
 
   async function loadAgents() {
     setLoading(true);
-    const res = await fetch("/api/agents");
-    const data = await res.json();
-    setAgents(data.agents || []);
-    setUnclaimed(data.unclaimed || []);
-    setLoading(false);
+    try {
+      const res = await fetch("/api/agents");
+      const text = await res.text();
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push("/sign-in");
+          return;
+        }
+        setAgents([]);
+        setUnclaimed([]);
+        setLoading(false);
+        return;
+      }
+      let data: { agents?: Agent[]; unclaimed?: UnclaimedAgent[] } = {};
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = {};
+        }
+      }
+      setAgents(data.agents || []);
+      setUnclaimed(data.unclaimed || []);
+    } catch {
+      setAgents([]);
+      setUnclaimed([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function createAgent() {
