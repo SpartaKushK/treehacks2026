@@ -154,7 +154,7 @@ async function handleScheduleConfirm(input: unknown) {
         summary: inp.title,
         start: inp.chosenSlot.start,
         end: inp.chosenSlot.end,
-        description: `Booked via People API. Participants: ${inp.participants.join(", ")}`,
+        description: `Booked via CareSync. Participants: ${inp.participants.join(", ")}`,
       });
     }
   }

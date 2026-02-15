@@ -4,25 +4,47 @@ import { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardR
 import StreamingAvatarSDK, {
   AvatarQuality,
   StreamingEvents,
+  STTProvider,
+  VoiceEmotion,
   type StartAvatarResponse,
 } from "@heygen/streaming-avatar";
 
 export interface StreamingAvatarHandle {
   speak: (text: string) => Promise<void>;
+  startVoiceChat: () => Promise<void>;
+  closeVoiceChat: () => Promise<void>;
+  muteInputAudio: () => void;
+  unmuteInputAudio: () => void;
 }
 
 interface Props {
   avatarId: string;
   initialText?: string;
+  enableVoiceChat?: boolean;
+  voiceEmotion?: VoiceEmotion;
+  onUserSpeaking?: (text: string) => void;
+  onUserFinished?: (text: string) => void;
+  onAvatarStartTalking?: () => void;
+  onAvatarStopTalking?: () => void;
 }
 
 const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
-  function StreamingAvatarInner({ avatarId, initialText }, ref) {
+  function StreamingAvatarInner({ avatarId, initialText, enableVoiceChat, voiceEmotion, onUserSpeaking, onUserFinished, onAvatarStartTalking, onAvatarStopTalking }, ref) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const avatarRef = useRef<StreamingAvatarSDK | null>(null);
     const [status, setStatus] = useState<"idle" | "connecting" | "ready" | "error">("idle");
     const [errorMsg, setErrorMsg] = useState("");
     const [isTalking, setIsTalking] = useState(false);
+
+    // Store callbacks in refs to avoid re-initializing avatar when callbacks change
+    const onUserSpeakingRef = useRef(onUserSpeaking);
+    const onUserFinishedRef = useRef(onUserFinished);
+    const onAvatarStartTalkingRef = useRef(onAvatarStartTalking);
+    const onAvatarStopTalkingRef = useRef(onAvatarStopTalking);
+    onUserSpeakingRef.current = onUserSpeaking;
+    onUserFinishedRef.current = onUserFinished;
+    onAvatarStartTalkingRef.current = onAvatarStartTalking;
+    onAvatarStopTalkingRef.current = onAvatarStopTalking;
 
     const speak = useCallback(async (text: string) => {
       if (!avatarRef.current) return;
@@ -33,7 +55,33 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
       }
     }, []);
 
-    useImperativeHandle(ref, () => ({ speak }), [speak]);
+    const startVoiceChat = useCallback(async () => {
+      if (!avatarRef.current) return;
+      try {
+        await avatarRef.current.startVoiceChat({ isInputAudioMuted: false });
+      } catch (err) {
+        console.error("Failed to start voice chat:", err);
+      }
+    }, []);
+
+    const closeVoiceChat = useCallback(async () => {
+      if (!avatarRef.current) return;
+      try {
+        await avatarRef.current.closeVoiceChat();
+      } catch {
+        // ignore
+      }
+    }, []);
+
+    const muteInputAudio = useCallback(() => {
+      avatarRef.current?.muteInputAudio();
+    }, []);
+
+    const unmuteInputAudio = useCallback(() => {
+      avatarRef.current?.unmuteInputAudio();
+    }, []);
+
+    useImperativeHandle(ref, () => ({ speak, startVoiceChat, closeVoiceChat, muteInputAudio, unmuteInputAudio }), [speak, startVoiceChat, closeVoiceChat, muteInputAudio, unmuteInputAudio]);
 
     useEffect(() => {
       let mounted = true;
@@ -75,15 +123,30 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
         });
 
         avatar.on(StreamingEvents.AVATAR_START_TALKING, () => {
-          if (mounted) setIsTalking(true);
+          if (mounted) {
+            setIsTalking(true);
+            onAvatarStartTalkingRef.current?.();
+          }
         });
 
         avatar.on(StreamingEvents.AVATAR_STOP_TALKING, () => {
-          if (mounted) setIsTalking(false);
+          if (mounted) {
+            setIsTalking(false);
+            onAvatarStopTalkingRef.current?.();
+          }
         });
 
         avatar.on(StreamingEvents.STREAM_DISCONNECTED, () => {
           if (mounted) setStatus("idle");
+        });
+
+        // Voice chat event listeners (user speech transcription)
+        avatar.on(StreamingEvents.USER_TALKING_MESSAGE, (event: { detail: { message: string } }) => {
+          if (mounted) onUserSpeakingRef.current?.(event.detail?.message ?? "");
+        });
+
+        avatar.on(StreamingEvents.USER_END_MESSAGE, (event: { detail: { message: string } }) => {
+          if (mounted) onUserFinishedRef.current?.(event.detail?.message ?? "");
         });
 
         // 3. Start session
@@ -91,6 +154,13 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
           await avatar.createStartAvatar({
             quality: AvatarQuality.Medium,
             avatarName: avatarId,
+            ...(enableVoiceChat && {
+              sttSettings: { provider: STTProvider.DEEPGRAM },
+              useSilencePrompt: false,
+            }),
+            ...(voiceEmotion && {
+              voice: { emotion: voiceEmotion },
+            }),
           });
         } catch (err) {
           if (!mounted) return;
@@ -99,7 +169,16 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
           return;
         }
 
-        // 4. Speak initial text if provided
+        // 4. Start voice chat if enabled
+        if (mounted && enableVoiceChat) {
+          try {
+            await avatar.startVoiceChat({ isInputAudioMuted: false });
+          } catch (err) {
+            console.error("Failed to auto-start voice chat:", err);
+          }
+        }
+
+        // 5. Speak initial text if provided
         if (mounted && initialText) {
           // Brief delay for stream to stabilize
           setTimeout(() => {
@@ -119,7 +198,7 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
           avatarRef.current = null;
         }
       };
-    }, [avatarId, initialText]);
+    }, [avatarId, initialText, enableVoiceChat, voiceEmotion]);
 
     return (
       <div
@@ -130,8 +209,8 @@ const StreamingAvatarComponent = forwardRef<StreamingAvatarHandle, Props>(
           aspectRatio: "1",
           borderRadius: "1rem",
           overflow: "hidden",
-          background: "#0a0a0f",
-          border: isTalking ? "2px solid var(--accent)" : "2px solid var(--glass-border)",
+          background: "#f1f5f9",
+          border: isTalking ? "2px solid var(--accent)" : "2px solid var(--border)",
           transition: "border-color 0.3s",
         }}
       >

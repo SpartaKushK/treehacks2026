@@ -3,8 +3,8 @@ import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "People API — Agent-to-Agent Human Endpoints",
-  description: "TreeHacks 2026 — canonical agent endpoints for humans",
+  title: "CareSync — AI-Powered Elderly Care That Keeps Families Connected",
+  description: "Intelligent health monitoring, proactive alerts, and seamless care coordination for the people you love most.",
 };
 
 export default function RootLayout({
@@ -16,11 +16,11 @@ export default function RootLayout({
     <ClerkProvider
       appearance={{
         variables: {
-          colorPrimary: "#6366f1",
-          colorBackground: "#12121a",
-          colorText: "#e4e4ef",
-          colorInputBackground: "#0a0a0f",
-          colorInputText: "#e4e4ef",
+          colorPrimary: "#2563eb",
+          colorBackground: "#ffffff",
+          colorText: "#1e293b",
+          colorInputBackground: "#f8fafc",
+          colorInputText: "#1e293b",
         },
       }}
     >

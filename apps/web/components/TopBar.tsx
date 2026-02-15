@@ -12,7 +12,7 @@ export default function TopBar({ title }: Props) {
       <h1 className="topbar-title">{title}</h1>
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
         <SignOutButton redirectUrl="/">
-          <button className="btn btn-secondary" style={{ fontSize: "0.75rem", padding: "0.375rem 0.75rem" }}>
+          <button className="btn btn-secondary" style={{ fontSize: "0.8125rem", padding: "0.5rem 1rem", borderRadius: 12 }}>
             Sign Out
           </button>
         </SignOutButton>
@@ -20,7 +20,7 @@ export default function TopBar({ title }: Props) {
           afterSignOutUrl="/"
           appearance={{
             elements: {
-              avatarBox: { width: 36, height: 36, border: "2px solid var(--border)" },
+              avatarBox: { width: 40, height: 40, border: "2px solid #F5EDE3", borderRadius: 12 },
             },
           }}
         />

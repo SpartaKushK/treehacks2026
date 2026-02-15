@@ -96,15 +96,15 @@ function AgentsPageInner() {
 
   return (
     <>
-      <TopBar title="Agents" />
+      <TopBar title="Care Team" />
       <div className="dashboard-content">
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-            Agent Registry
+            Care Team
           </h1>
           <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
-            Create, claim, and configure your AI agent endpoints
+            Set up and manage the AI agents that look after your patients
           </p>
         </div>
 
@@ -112,30 +112,30 @@ function AgentsPageInner() {
         <div className="agent-stats" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
           <div className="agent-stat">
             <div className="agent-stat-val">{agents.length}</div>
-            <div className="agent-stat-lbl">Your Agents</div>
+            <div className="agent-stat-lbl">Your Care Agents</div>
           </div>
           <div className="agent-stat">
             <div className="agent-stat-val">{unclaimed.length}</div>
-            <div className="agent-stat-lbl">Available to Claim</div>
+            <div className="agent-stat-lbl">Available to Add</div>
           </div>
           <div className="agent-stat">
             <div className="agent-stat-val">
               {agents.reduce((sum, a) => sum + a.capabilities.length, 0)}
             </div>
-            <div className="agent-stat-lbl">Total Capabilities</div>
+            <div className="agent-stat-lbl">Active Services</div>
           </div>
         </div>
 
-        {/* Your Agents */}
+        {/* Your Care Agents */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Your Agents</span>
+          <span className="agent-section-title">Your Care Agents</span>
           <span className="agent-section-line" />
           <button
             className="btn btn-primary"
             style={{ fontSize: "0.75rem", padding: "0.375rem 0.875rem" }}
             onClick={() => setShowCreate(!showCreate)}
           >
-            + Create Agent
+            + Add Care Agent
           </button>
         </div>
 
@@ -150,7 +150,7 @@ function AgentsPageInner() {
             }}
           >
             <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
-              Create New Agent
+              Add New Care Agent
             </div>
             <div className="row" style={{ gap: "0.75rem", alignItems: "flex-end" }}>
               <div className="field">
@@ -179,7 +179,7 @@ function AgentsPageInner() {
         {loading ? (
           <div style={{ padding: "2rem", textAlign: "center" }}><span className="spinner" /></div>
         ) : agents.length === 0 ? (
-          <EmptyState message="No agents yet. Create one or claim a demo agent below." />
+          <EmptyState message="No care agents yet. Add one or claim a demo agent below." />
         ) : (
           <div className="agent-grid">
             {agents.map((a) => (
@@ -199,12 +199,12 @@ function AgentsPageInner() {
         {unclaimed.length > 0 && (
           <>
             <div className="agent-section-header">
-              <span className="agent-section-title">Available Demo Agents</span>
+              <span className="agent-section-title">Available Demo Care Agents</span>
               <span className="agent-section-line" />
               <span className="agent-section-count">{unclaimed.length} available</span>
             </div>
             <p style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.75rem" }}>
-              Claim a demo agent to link it to your account and start configuring it.
+              Claim a demo care agent to link it to your account and start coordinating care.
             </p>
             <div className="agent-grid">
               {unclaimed.map((a) => (
@@ -236,7 +236,7 @@ function AgentsPageInner() {
           </>
         )}
 
-        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
+        <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>
       </div>
     </>
   );
@@ -246,7 +246,7 @@ export default function AgentsPage() {
   return (
     <Suspense fallback={
       <>
-        <TopBar title="Agents" />
+        <TopBar title="Care Team" />
         <div className="dashboard-content" style={{ textAlign: "center", padding: "3rem" }}>
           <span className="spinner" />
         </div>

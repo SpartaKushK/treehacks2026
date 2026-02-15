@@ -5,7 +5,9 @@
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
     "seed": "pnpm --filter web seed",
-    "db:push": "pnpm --filter web db:push"
+    "db:push": "pnpm --filter web db:push",
+    "mcp:dev": "npx tsx mcp-server/server.ts",
+    "mcp:tunnel": "npx poke tunnel http://localhost:8787/mcp --name CareSync"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

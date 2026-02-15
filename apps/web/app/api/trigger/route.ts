@@ -1,19 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureSeed } from "@/lib/ensureSeed";
 import { runSecretary } from "@/lib/secretary/agent";
+import { prisma } from "@/lib/store";
+
+export const runtime = "nodejs";
 
 /**
  * POST /api/trigger
  *
  * Open endpoint that accepts health trigger data and routes it through
- * the Secretary Agent. The secretary uses LLM function-calling to decide
- * which sub-tools to invoke (anomaly analysis, triage, scheduling, etc.)
- * and returns a final decision.
+ * the Secretary Agent powered by the Claude Agent SDK. The agent
+ * autonomously decides which tools to invoke (anomaly analysis, clinical
+ * evidence lookup, triage, scheduling, web search, etc.) and returns a
+ * final decision.
  *
  * Body:
  * {
  *   "trigger_type": "health_anomaly" | "health_summary" | "schedule" | "custom",
- *   "provider": "openai" | "claude",        // optional, defaults to "openai"
  *   "data": { ... trigger-specific payload },
  *   "description": "optional description"
  * }
@@ -23,8 +26,10 @@ import { runSecretary } from "@/lib/secretary/agent";
  *   "traceId": "uuid",
  *   "finalDecision": "Secretary's summary ...",
  *   "toolCallLog": [ { tool, args, result }, ... ],
- *   "provider": "openai" | "claude",
- *   "turns": 3
+ *   "provider": "claude",
+ *   "turns": 3,
+ *   "sessionId": "uuid",
+ *   "costUsd": 0.01
  * }
  */
 export async function POST(req: NextRequest) {
@@ -41,8 +46,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const provider: "openai" | "claude" =
-      body.provider === "claude" ? "claude" : "openai";
+    // Always use Claude via the Agent SDK
+    const provider: "openai" | "claude" = "claude";
 
     const triggerType = body.trigger_type || "custom";
     const description =
@@ -55,7 +60,38 @@ export async function POST(req: NextRequest) {
       triggerDescription: description,
     });
 
-    return NextResponse.json(result);
+    // Extract clinical evidence from tool call log (if the secretary called it)
+    const evidenceCall = result.toolCallLog.find(
+      (tc) => tc.tool === "lookup_clinical_evidence"
+    );
+    const evidenceJson = evidenceCall ? JSON.stringify(evidenceCall.result) : null;
+
+    // Persist anomaly alert with evidence if this was a health anomaly trigger
+    if (triggerType === "health_anomaly" && body.data.user_handle) {
+      const user = await prisma.human.findUnique({
+        where: { handle: body.data.user_handle },
+        select: { id: true },
+      });
+      if (user) {
+        const anomalyCall = result.toolCallLog.find(
+          (tc) => tc.tool === "analyze_anomaly"
+        );
+        await prisma.anomalyAlert.create({
+          data: {
+            humanId: user.id,
+            traceId: result.traceId,
+            severity: (anomalyCall?.result?.urgency as string) || "routine",
+            anomalyScore: (body.data.anomaly_score as number) || 0,
+            flagsJson: JSON.stringify(body.data.flags || []),
+            decisionJson: anomalyCall ? JSON.stringify(anomalyCall.result) : "{}",
+            evidenceJson,
+            status: "active",
+          },
+        });
+      }
+    }
+
+    return NextResponse.json({ ...result, evidenceJson });
   } catch (err) {
     console.error("[/api/trigger] Error:", err);
     return NextResponse.json(

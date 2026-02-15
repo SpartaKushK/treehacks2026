@@ -181,21 +181,26 @@ export default function DemoPage() {
 
   return (
     <>
-      <TopBar title="Demo" />
+      <TopBar title="Live Demo" />
       <div className="dashboard-content">
         {/* Header */}
         <div style={{ marginBottom: "1.5rem" }}>
           <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
-            Demo Playground
+            Live Demo: A Day in Pari&apos;s Life
           </h1>
           <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
-            Interactive demos of agent-to-agent negotiation, health data, and anomaly detection
+            Watch how CareSync&apos;s AI agents work together to keep a 72-year-old patient safe, informed, and connected to her care team.
           </p>
         </div>
 
-        {/* Scheduling Demo */}
+        {/* Narrative intro */}
+        <div style={{ padding: "1rem 1.25rem", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: "10px", marginBottom: "1.5rem", fontSize: "0.85rem", lineHeight: 1.6, color: "var(--text-dim)" }}>
+          Meet <strong style={{ color: "var(--text)" }}>Pari</strong>, a 72-year-old grandmother who lives independently. Her family wants peace of mind. Her doctor wants timely data. CareSync connects them through AI agents that negotiate, monitor, and act &mdash; so Pari can focus on what matters: living her life.
+        </div>
+
+        {/* Scenario 1: Booking a Visit */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Scheduling Negotiation</span>
+          <span className="agent-section-title">Scenario 1: Booking a Visit</span>
           <span className="agent-section-line" />
           <ProviderToggle value={schedProvider} onChange={setSchedProvider} />
         </div>
@@ -258,7 +263,7 @@ export default function DemoPage() {
 
         {/* Healthcare Demo — via Secretary Agent */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Healthcare Summary (Secretary Agent)</span>
+          <span className="agent-section-title">Scenario 2: Doctor Reviews Pari&apos;s Health</span>
           <span className="agent-section-line" />
           <ProviderToggle value={healthProvider} onChange={setHealthProvider} />
         </div>
@@ -273,7 +278,7 @@ export default function DemoPage() {
         >
           <div className="row" style={{ marginBottom: "1rem", gap: "0.75rem" }}>
             <button className="btn btn-primary" onClick={runHealthDemo} disabled={healthLoading}>
-              {healthLoading ? <><span className="spinner" /> Secretary processing...</> : "Secretary: fetch Pari health summary"}
+              {healthLoading ? <><span className="spinner" /> Fetching health summary...</> : "Doctor requests Pari's 30-day health summary"}
             </button>
           </div>
           {healthError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.8rem" }}>Error: {healthError}</div>}
@@ -312,7 +317,7 @@ export default function DemoPage() {
 
         {/* Anomaly Demo — via Secretary Agent */}
         <div className="agent-section-header">
-          <span className="agent-section-title">Health Anomaly &rarr; Secretary Agent</span>
+          <span className="agent-section-title">Scenario 3: Wearable Detects a Problem</span>
           <span className="agent-section-line" />
           <ProviderToggle value={anomProvider} onChange={setAnomProvider} />
         </div>
@@ -334,7 +339,7 @@ export default function DemoPage() {
               </select>
             </div>
             <button className="btn btn-primary" onClick={runAnomalyDemo} disabled={anomLoading}>
-              {anomLoading ? <><span className="spinner" /> Secretary processing...</> : "Simulate wearable anomaly alert"}
+              {anomLoading ? <><span className="spinner" /> Analyzing anomaly...</> : "Simulate: Pari's watch detects a health anomaly"}
             </button>
           </div>
           {anomError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.8rem" }}>Error: {anomError}</div>}
@@ -350,7 +355,7 @@ export default function DemoPage() {
                   <span className="badge badge-red">ESCALATED</span>
                 )}
               </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>SECRETARY DECISION</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>CARE AGENT DECISION</div>
               <div className="friendly-text" style={{ marginBottom: "1rem", whiteSpace: "pre-wrap" }}>{anomResult.finalDecision}</div>
               {anomResult.toolCallLog.length > 0 && (
                 <div style={{ marginTop: "0.75rem" }}>
@@ -380,7 +385,7 @@ export default function DemoPage() {
           )}
         </div>
 
-        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
+        <div className="agent-footer">CARESYNC — TREEHACKS 2026</div>
       </div>
     </>
   );
