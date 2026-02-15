@@ -302,7 +302,7 @@ const sendHealthTrigger: ToolDefinition = {
     const data: Record<string, unknown> = {
       user_handle: userHandle,
       ...(args.anomaly_score != null && { anomaly_score: args.anomaly_score }),
-      ...(args.flags && Array.isArray(args.flags) && { flags: args.flags }),
+      ...(args.flags && Array.isArray(args.flags) ? { flags: args.flags } : {}),
     };
 
     addStep(ctx.traceId, {
@@ -723,7 +723,8 @@ const scheduleAppointment: ToolDefinition = {
       );
 
       // Mirror booking to doctor calendar if requested
-      if (doctorHandle && bookingCall?.result?.booking) {
+      const booking = bookingCall?.result?.booking as Record<string, unknown> | undefined;
+      if (doctorHandle && booking) {
         const doc = await prisma.human.findUnique({
           where: { handle: doctorHandle },
           select: { id: true },
@@ -731,12 +732,12 @@ const scheduleAppointment: ToolDefinition = {
         if (doc) {
           try {
             await bookCalendarEvent(doc.id, {
-              summary: bookingCall.result.booking.title || args.title,
-              start: bookingCall.result.booking.start,
-              end: bookingCall.result.booking.end,
+              summary: (booking.title as string) || (args.title as string),
+              start: booking.start as string,
+              end: booking.end as string,
               description:
-                bookingCall.result.booking.description ||
-                args.description ||
+                (booking.description as string) ||
+                (args.description as string) ||
                 `Appointment mirrored for ${doctorHandle}`,
             });
             addStep(ctx.traceId, {
@@ -769,13 +770,13 @@ const scheduleAppointment: ToolDefinition = {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              start: bookingCall.result.booking.start,
-              end: bookingCall.result.booking.end,
+              start: booking!.start as string,
+              end: booking!.end as string,
               patient_name: patientName,
               patient_email: patientEmail,
-              title: bookingCall.result.booking.title || (args.title as string) || "Medical Appointment",
+              title: (booking!.title as string) || (args.title as string) || "Medical Appointment",
               description:
-                bookingCall.result.booking.description ||
+                (booking!.description as string) ||
                 (args.description as string) ||
                 `Scheduled via Secretary (patient: ${handle})`,
             }),
@@ -812,7 +813,7 @@ const scheduleAppointment: ToolDefinition = {
             proposal_id: "external-booking",
             patient_id: args.user_handle,
             accepted: true,
-            selected_slot: bookingCall.result.booking,
+            selected_slot: booking,
             counter_message: null,
           };
           try {

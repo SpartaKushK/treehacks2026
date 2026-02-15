@@ -137,7 +137,7 @@ export default function DashboardHome() {
               <span className="spinner" />
             </div>
           ) : agents.length === 0 ? (
-            <EmptyState title="No care agents yet" subtitle="Create an agent to start monitoring patients." />
+            <EmptyState message="No care agents yet — create an agent to start monitoring patients." />
           ) : (
             <>
               {agents.map((a) => (
