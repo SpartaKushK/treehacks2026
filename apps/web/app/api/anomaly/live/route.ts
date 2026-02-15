@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/store";
 import { ensureSeed } from "@/lib/ensureSeed";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   await ensureSeed();
   const { userId } = await auth();
@@ -16,7 +18,8 @@ export async function GET() {
     },
   });
 
-  const result = agents.map((agent) => {
+  type AgentWithMetrics = (typeof agents)[number];
+  const result = agents.map((agent: AgentWithMetrics) => {
     const latest = agent.healthMetrics[0] || null;
 
     // Simple anomaly score based on latest metrics
@@ -44,6 +47,7 @@ export async function GET() {
     return {
       handle: agent.handle,
       displayName: agent.displayName,
+      avatarPhotoUrl: agent.avatarPhotoUrl,
       latestMetrics: latest
         ? {
             sleepHours: latest.sleepHours,

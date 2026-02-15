@@ -10,6 +10,7 @@ interface Agent {
   handle: string;
   displayName: string;
   llmProvider: string;
+  avatarPhotoUrl: string | null;
   capabilities: { id: string }[];
 }
 
@@ -28,14 +29,47 @@ export default function DashboardHome() {
       .catch(() => setLoading(false));
   }, []);
 
+  const totalCaps = agents.reduce((sum, a) => sum + a.capabilities.length, 0);
+
   return (
     <>
       <TopBar title="Dashboard" />
       <div className="dashboard-content">
-        <div className="section-header">
-          <h2>Your Agents</h2>
+        {/* Welcome */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+            Command Center
+          </h1>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+            Manage your agent endpoints, capabilities, and permissions
+          </p>
+        </div>
+
+        {/* Stats bar */}
+        <div className="agent-stats" style={{ gridTemplateColumns: "repeat(3, 1fr)" }}>
+          <div className="agent-stat">
+            <div className="agent-stat-val">{agents.length}</div>
+            <div className="agent-stat-lbl">Active Agents</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val">{totalCaps}</div>
+            <div className="agent-stat-lbl">Capabilities</div>
+          </div>
+          <div className="agent-stat">
+            <div className="agent-stat-val" style={{ color: "var(--green)" }}>
+              {agents.length > 0 ? "ONLINE" : "—"}
+            </div>
+            <div className="agent-stat-lbl">Network Status</div>
+          </div>
+        </div>
+
+        {/* Agents section */}
+        <div className="agent-section-header">
+          <span className="agent-section-title">Your Agents</span>
+          <span className="agent-section-line" />
           <button
             className="btn btn-primary"
+            style={{ fontSize: "0.75rem", padding: "0.375rem 0.875rem" }}
             onClick={() => router.push("/dashboard/agents?create=true")}
           >
             + Create Agent
@@ -61,24 +95,45 @@ export default function DashboardHome() {
                 displayName={a.displayName}
                 capabilityCount={a.capabilities.length}
                 llmProvider={a.llmProvider}
+                avatarUrl={a.avatarPhotoUrl}
               />
             ))}
           </div>
         )}
 
-        {/* Quick stats */}
-        <div className="stats-row" style={{ marginTop: "2rem" }}>
-          <div className="stat-card">
-            <div className="stat-value">{agents.length}</div>
-            <div className="stat-label">Active Agents</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value">
-              {agents.reduce((sum, a) => sum + a.capabilities.length, 0)}
-            </div>
-            <div className="stat-label">Total Capabilities</div>
-          </div>
+        {/* Quick actions */}
+        <div className="agent-section-header">
+          <span className="agent-section-title">Quick Actions</span>
+          <span className="agent-section-line" />
         </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "0.75rem" }}>
+          <button
+            className="agent-perm-card"
+            style={{ cursor: "pointer", textAlign: "left", background: "var(--bg-card)" }}
+            onClick={() => router.push("/dashboard/demo")}
+          >
+            <div className="agent-perm-tier">Demo</div>
+            <div className="agent-perm-sub">Run interactive demos of agent capabilities</div>
+          </button>
+          <button
+            className="agent-perm-card"
+            style={{ cursor: "pointer", textAlign: "left", background: "var(--bg-card)" }}
+            onClick={() => router.push("/dashboard/anomaly")}
+          >
+            <div className="agent-perm-tier">Anomaly</div>
+            <div className="agent-perm-sub">Monitor health anomalies and alerts</div>
+          </button>
+          <button
+            className="agent-perm-card"
+            style={{ cursor: "pointer", textAlign: "left", background: "var(--bg-card)" }}
+            onClick={() => router.push("/dashboard/calendar")}
+          >
+            <div className="agent-perm-tier">Calendar</div>
+            <div className="agent-perm-sub">View and sync scheduled events</div>
+          </button>
+        </div>
+
+        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
       </div>
     </>
   );

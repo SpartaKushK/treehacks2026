@@ -9,6 +9,8 @@ import { startTrace, addStep, finalizeTrace } from "@/lib/trace";
 import { getPlanner, type Provider } from "@/lib/llm";
 import type { HealthSummaryOutput } from "@people/shared";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   await ensureSeed();
 

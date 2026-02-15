@@ -183,13 +183,32 @@ export default function DemoPage() {
     <>
       <TopBar title="Demo" />
       <div className="dashboard-content">
+        {/* Header */}
+        <div style={{ marginBottom: "1.5rem" }}>
+          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+            Demo Playground
+          </h1>
+          <p style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>
+            Interactive demos of agent-to-agent negotiation, health data, and anomaly detection
+          </p>
+        </div>
+
         {/* Scheduling Demo */}
-        <div className="card">
-          <div className="section-header">
-            <h2>Multi-turn Scheduling Negotiation</h2>
-            <ProviderToggle value={schedProvider} onChange={setSchedProvider} />
-          </div>
-          <div className="row" style={{ marginBottom: "1rem" }}>
+        <div className="agent-section-header">
+          <span className="agent-section-title">Scheduling Negotiation</span>
+          <span className="agent-section-line" />
+          <ProviderToggle value={schedProvider} onChange={setSchedProvider} />
+        </div>
+        <div
+          style={{
+            padding: "1.25rem",
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div className="row" style={{ marginBottom: "1rem", gap: "0.75rem" }}>
             <div className="field">
               <label>From</label>
               <input value={schedFrom} onChange={(e) => setSchedFrom(e.target.value)} />
@@ -202,22 +221,24 @@ export default function DemoPage() {
               {schedLoading ? <><span className="spinner" /> Negotiating...</> : "I want coffee with Alex next week"}
             </button>
           </div>
-          {schedError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.875rem" }}>Error: {schedError}</div>}
+          {schedError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.8rem" }}>Error: {schedError}</div>}
           {schedResult && (
             <div style={{ marginBottom: "1rem" }}>
-              <div className="row" style={{ marginBottom: "0.75rem" }}>
+              <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
                 <span className="badge badge-green">BOOKED</span>
                 <span className="badge badge-orange">{schedResult.provider}</span>
-                <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>Booking {schedResult.bookingId.slice(0, 8)}...</span>
+                <span style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>Booking {schedResult.bookingId.slice(0, 8)}...</span>
               </div>
-              <div style={{ fontSize: "0.85rem" }}>
+              <div style={{ fontSize: "0.8rem" }}>
                 <strong>Slot:</strong> {new Date(schedResult.chosenSlot.start).toLocaleString()} &mdash; {new Date(schedResult.chosenSlot.end).toLocaleTimeString()}
               </div>
               {schedResult.messages.length > 0 && (
                 <div style={{ marginTop: "0.75rem" }}>
-                  <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.25rem" }}>NEGOTIATION MESSAGES</div>
+                  <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.375rem" }}>
+                    Negotiation Messages
+                  </div>
                   {schedResult.messages.map((m, i) => (
-                    <div key={i} style={{ fontSize: "0.8125rem", padding: "0.375rem 0.5rem", background: "var(--bg)", borderRadius: 4, marginBottom: 4 }}>Turn {i}: {m}</div>
+                    <div key={i} style={{ fontSize: "0.8rem", padding: "0.375rem 0.625rem", background: "var(--bg)", borderRadius: 6, marginBottom: 4 }}>Turn {i}: {m}</div>
                   ))}
                 </div>
               )}
@@ -225,31 +246,43 @@ export default function DemoPage() {
           )}
           {schedTrace.length > 0 && (
             <>
-              <div className="divider" />
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.5rem" }}>TRACE ({schedTrace.length} steps)</div>
-              <TraceViewer steps={schedTrace} provider={schedProvider} />
+              <div style={{ borderTop: "1px solid var(--border)", margin: "1rem 0", paddingTop: "1rem" }}>
+                <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.5rem" }}>
+                  Trace ({schedTrace.length} steps)
+                </div>
+                <TraceViewer steps={schedTrace} provider={schedProvider} />
+              </div>
             </>
           )}
         </div>
 
         {/* Healthcare Demo — via Secretary Agent */}
-        <div className="card">
-          <div className="section-header">
-            <h2>Healthcare Summary (Secretary Agent)</h2>
-            <ProviderToggle value={healthProvider} onChange={setHealthProvider} />
-          </div>
-          <div className="row" style={{ marginBottom: "1rem" }}>
+        <div className="agent-section-header">
+          <span className="agent-section-title">Healthcare Summary (Secretary Agent)</span>
+          <span className="agent-section-line" />
+          <ProviderToggle value={healthProvider} onChange={setHealthProvider} />
+        </div>
+        <div
+          style={{
+            padding: "1.25rem",
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div className="row" style={{ marginBottom: "1rem", gap: "0.75rem" }}>
             <button className="btn btn-primary" onClick={runHealthDemo} disabled={healthLoading}>
               {healthLoading ? <><span className="spinner" /> Secretary processing...</> : "Secretary: fetch Pari health summary"}
             </button>
           </div>
-          {healthError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.875rem" }}>Error: {healthError}</div>}
+          {healthError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.8rem" }}>Error: {healthError}</div>}
           {healthResult && (
             <div style={{ marginBottom: "1rem" }}>
-              <div className="row" style={{ marginBottom: "0.75rem" }}>
+              <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.75rem" }}>
                 <span className="badge badge-green">COMPLETE</span>
                 <span className="badge badge-orange">{healthResult.provider}</span>
-                <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>{healthResult.turns} turn(s), {healthResult.toolCallLog.length} tool call(s)</span>
+                <span style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>{healthResult.turns} turn(s), {healthResult.toolCallLog.length} tool call(s)</span>
               </div>
               <div className="friendly-text" style={{ marginBottom: "1rem", whiteSpace: "pre-wrap" }}>{healthResult.finalDecision}</div>
               {healthResult.toolCallLog.length > 0 && (
@@ -268,21 +301,31 @@ export default function DemoPage() {
             </div>
           )}
           {healthTrace.length > 0 && (
-            <>
-              <div className="divider" />
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.5rem" }}>TRACE ({healthTrace.length} steps)</div>
+            <div style={{ borderTop: "1px solid var(--border)", margin: "1rem 0", paddingTop: "1rem" }}>
+              <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.5rem" }}>
+                Trace ({healthTrace.length} steps)
+              </div>
               <TraceViewer steps={healthTrace} provider={healthProvider} />
-            </>
+            </div>
           )}
         </div>
 
         {/* Anomaly Demo — via Secretary Agent */}
-        <div className="card">
-          <div className="section-header">
-            <h2>Health Anomaly &rarr; Secretary Agent</h2>
-            <ProviderToggle value={anomProvider} onChange={setAnomProvider} />
-          </div>
-          <div className="row" style={{ marginBottom: "1rem" }}>
+        <div className="agent-section-header">
+          <span className="agent-section-title">Health Anomaly &rarr; Secretary Agent</span>
+          <span className="agent-section-line" />
+          <ProviderToggle value={anomProvider} onChange={setAnomProvider} />
+        </div>
+        <div
+          style={{
+            padding: "1.25rem",
+            background: "var(--bg-card)",
+            border: "1px solid var(--border)",
+            borderRadius: "10px",
+            marginBottom: "1.5rem",
+          }}
+        >
+          <div className="row" style={{ marginBottom: "1rem", gap: "0.75rem" }}>
             <div className="field">
               <label>Severity</label>
               <select value={anomSeverity} onChange={(e) => setAnomSeverity(e.target.value as "mild" | "severe")}>
@@ -294,10 +337,10 @@ export default function DemoPage() {
               {anomLoading ? <><span className="spinner" /> Secretary processing...</> : "Simulate wearable anomaly alert"}
             </button>
           </div>
-          {anomError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.875rem" }}>Error: {anomError}</div>}
+          {anomError && <div style={{ color: "var(--red)", marginBottom: "1rem", fontSize: "0.8rem" }}>Error: {anomError}</div>}
           {anomResult && (
             <div style={{ marginBottom: "1rem" }}>
-              <div className="row" style={{ marginBottom: "0.75rem" }}>
+              <div style={{ display: "flex", gap: "0.375rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
                 <span className="badge badge-green">COMPLETE</span>
                 <span className="badge badge-orange">{anomResult.provider}</span>
                 <span style={{ fontSize: "0.85rem", color: "var(--text-dim)" }}>
@@ -328,13 +371,16 @@ export default function DemoPage() {
             </div>
           )}
           {anomTrace.length > 0 && (
-            <>
-              <div className="divider" />
-              <div style={{ fontSize: "0.75rem", color: "var(--text-dim)", marginBottom: "0.5rem" }}>TRACE ({anomTrace.length} steps)</div>
+            <div style={{ borderTop: "1px solid var(--border)", margin: "1rem 0", paddingTop: "1rem" }}>
+              <div style={{ fontSize: "0.65rem", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--text-dim)", marginBottom: "0.5rem" }}>
+                Trace ({anomTrace.length} steps)
+              </div>
               <TraceViewer steps={anomTrace} provider={anomProvider} />
-            </>
+            </div>
           )}
         </div>
+
+        <div className="agent-footer">PEOPLE API — TREEHACKS 2026</div>
       </div>
     </>
   );

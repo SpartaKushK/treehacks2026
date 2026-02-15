@@ -62,10 +62,12 @@ Without API keys, both planners fall back to deterministic logic — the full de
 1. Push this repo to GitHub
 2. Import in [vercel.com/new](https://vercel.com/new)
 3. Set root directory to `apps/web`
-4. Add environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY)
+4. Add environment variables:
+   - **DATABASE_URL** (required) — Use the same Supabase Postgres URL as local: `postgresql://postgres:YOUR_PASSWORD@db.mavwwlayckncyednpids.supabase.co:5432/postgres?sslmode=require` (replace `YOUR_PASSWORD` with the Supabase DB password). The build runs `prisma db push` so tables are created on deploy.
+   - OPENAI_API_KEY, ANTHROPIC_API_KEY (optional)
 5. Deploy
 
-Note: SQLite runs locally; for production, switch the Prisma datasource to Postgres.
+**Local:** `apps/web/.env` already includes `DATABASE_URL` for the shared Supabase instance. Run `pnpm --filter web db:push` once to create tables, then `pnpm dev`.
 
 ## Secretary Agent (Trigger Endpoint)
 

@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Human {
@@ -20,6 +20,10 @@ model Human {
   personaPrompt        String?
   llmProvider          String   @default("claude")
   anomalyThresholdJson String   @default("{\"urgent\":85,\"soon\":70}")
+
+  // HeyGen avatar
+  heygenAvatarId String?
+  avatarPhotoUrl String?
 
   // Google Calendar OAuth tokens (JSON blob)
   googleCalendarTokens String?
