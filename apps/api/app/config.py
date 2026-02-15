@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     # Base URL
     base_url: str = "http://localhost:8000"
 
+    # Python Doctor Agent (for real calendar: get_free_slots + create_event)
+    doctor_agent_base_url: str = "http://localhost:8000"
+
     # Clerk
     clerk_secret_key: str = ""
     clerk_webhook_secret: str = ""

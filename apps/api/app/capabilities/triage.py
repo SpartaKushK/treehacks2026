@@ -11,7 +11,7 @@ import httpx
 
 from ..trace import add_step
 from ..config import get_settings
-from ..models import TriageRequest, TriageOutcome
+from ..models import TriageRequest, TriageOutcome, TimeSlot, BookingConfirmation
 from ..personas.doctor_receptionist import build_doctor_receptionist_prompt
 from ..llm.deterministic import generate_triage_outcome
 
@@ -38,23 +38,55 @@ async def handle_triage_intake_and_schedule(
         },
     )
 
-    # Try LLM, fall back to deterministic
     settings = get_settings()
-    api_key = settings.openai_api_key if provider == "openai" else settings.anthropic_api_key
+    outcome: TriageOutcome | None = None
 
-    if api_key:
+    # If Doctor Agent is configured, delegate to it for real calendar (get_free_slots + create_event)
+    if settings.doctor_agent_base_url:
         try:
-            outcome = await _call_llm_for_triage(req, provider, api_key)
-        except Exception:
+            url = settings.doctor_agent_base_url.rstrip("/") + "/triage/platform"
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                r = await client.post(
+                    url,
+                    json=req.model_dump(mode="json"),
+                )
+                r.raise_for_status()
+            data = r.json()
+            # Map PlatformTriageOutcome -> TriageOutcome
+            outcome = TriageOutcome(
+                intake_questions_asked=data["intake_questions_asked"],
+                intake_answers=data["intake_answers"],
+                urgency=data["urgency"],
+                proposed_slots=[TimeSlot(start=s["start"], end=s["end"]) for s in data["proposed_slots"]],
+                booking_confirmation=BookingConfirmation(
+                    start=data["booking_confirmation"]["start"],
+                    end=data["booking_confirmation"]["end"],
+                    method=data["booking_confirmation"]["method"],
+                ),
+                escalation_triggered=data["escalation_triggered"],
+                calendar_event_id=data.get("calendar_event_id"),
+            )
+            add_step(trace_id, actor="dr_smith", event="DOCTOR_AGENT_CALENDAR_USED", ok=True, data={"calendar_event_id": outcome.calendar_event_id})
+        except Exception as e:
+            add_step(trace_id, actor="dr_smith", event="DOCTOR_AGENT_CALL_FAILED", ok=False, data={"error": str(e)})
+            # Fall through to local LLM/deterministic
+
+    if outcome is None:
+        # Local path: LLM or deterministic (no calendar write)
+        api_key = settings.openai_api_key if provider == "openai" else settings.anthropic_api_key
+        if api_key:
+            try:
+                outcome = await _call_llm_for_triage(req, provider, api_key)
+            except Exception:
+                outcome = generate_triage_outcome(req)
+        else:
             outcome = generate_triage_outcome(req)
-    else:
-        outcome = generate_triage_outcome(req)
 
     # Add trace steps
     add_step(trace_id, actor="dr_smith", event="INTAKE_TURN_1", ok=True, data={"questions_asked": outcome.intake_questions_asked})
     add_step(trace_id, actor=req.patient_handle, event="INTAKE_TURN_2", ok=True, data={"answers": outcome.intake_answers})
     add_step(trace_id, actor="dr_smith", event="APPOINTMENT_PROPOSED", ok=True, data={"slots": [s.model_dump() for s in outcome.proposed_slots], "urgency": outcome.urgency})
-    add_step(trace_id, actor="dr_smith", event="APPOINTMENT_BOOKED", ok=True, data={"booking": outcome.booking_confirmation.model_dump(), "escalation_triggered": outcome.escalation_triggered})
+    add_step(trace_id, actor="dr_smith", event="APPOINTMENT_BOOKED", ok=True, data={"booking": outcome.booking_confirmation.model_dump(), "escalation_triggered": outcome.escalation_triggered, "calendar_event_id": outcome.calendar_event_id})
 
     return {"ok": True, "data": {"outcome": outcome.model_dump()}}
 

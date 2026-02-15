@@ -41,8 +41,8 @@ GOOGLE_OAUTH_CLIENT_SECRET_FILE = os.environ.get(
 )
 
 # ─── Scheduling ───────────────────────────────────────────────────────────────
-# How many days out to search for available slots
-SCHEDULING_WINDOW_DAYS = 7
+# How many days out to search for available slots (up to 10 days)
+SCHEDULING_WINDOW_DAYS = 10
 APPOINTMENT_DURATION_MINUTES = 60
 MAX_SCHEDULING_ROUNDS = 3  # max back-and-forth rounds before fallback
 

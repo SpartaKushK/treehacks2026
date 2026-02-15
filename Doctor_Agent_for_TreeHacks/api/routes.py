@@ -4,12 +4,16 @@ API Routes for the Doctor Agent.
 POST /agent             — Unified endpoint: action=get_availability | action=alert (agent decides the call)
 GET  /health            — Health check
 POST /alert             — Receive a health alert (legacy; prefer POST /agent with action=alert)
+POST /booking           — Create an event on the doctor's calendar (scheduler/secretary)
 POST /schedule/response  — Receive scheduling responses from the patient agent (callback)
 """
 
 import logging
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+
+PACIFIC = ZoneInfo("America/Los_Angeles")
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
@@ -18,9 +22,11 @@ from models.schemas import (
     HealthAlert, AlertResponse, SlotResponse, Severity, TriageResult,
     PlatformTriageRequest, PlatformTriageOutcome, AlertType,
     AgentRequest, AgentRequestGetAvailability, AgentResponseAvailability, AgentResponseAlert,
+    BookingRequest, TimeSlot,
 )
 from agents.triage import run_triage
 from tools.calendar import get_free_slots, create_event
+from config import SCHEDULING_WINDOW_DAYS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -92,6 +98,43 @@ async def health_check():
     return {"status": "ok", "service": "doctor-agent", "timestamp": datetime.utcnow().isoformat()}
 
 
+def _parse_booking_datetime(s: str) -> datetime:
+    """Parse ISO datetime; if naive (no timezone), treat as Pacific and return UTC."""
+    s = s.replace("Z", "+00:00").strip()
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid datetime: {e}")
+    if dt.tzinfo is None:
+        # Naive time: assume Pacific so 9am Pacific isn't stored as 9am UTC (which would show as 1am Pacific)
+        dt = dt.replace(tzinfo=PACIFIC).astimezone(timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt
+
+
+@router.post("/booking")
+async def create_booking(body: BookingRequest):
+    """
+    Create an appointment on the doctor's calendar. Used by the Scheduler Agent
+    or Secretary when a patient has confirmed a slot. Writes to the doctor's
+    Google Calendar via tools.calendar.create_event.
+    """
+    start_dt = _parse_booking_datetime(body.start)
+    end_dt = _parse_booking_datetime(body.end)
+    slot = TimeSlot(start=start_dt, end=end_dt, label=body.title)
+    event_id = create_event(
+        slot=slot,
+        patient_name=body.patient_name,
+        patient_email=body.patient_email,
+        appointment_type=body.title,
+        description=body.description or "",
+    )
+    if not event_id:
+        raise HTTPException(status_code=503, detail="Calendar not configured or create_event failed")
+    return {"ok": True, "calendar_event_id": event_id, "message": "Appointment created on doctor's calendar."}
+
+
 @router.post("/agent")
 async def unified_agent(req: AgentRequest, background_tasks: BackgroundTasks):
     """
@@ -100,22 +143,38 @@ async def unified_agent(req: AgentRequest, background_tasks: BackgroundTasks):
     """
     if req.action == "get_availability":
         opts = req.get_availability or AgentRequestGetAvailability()
-        hours_ahead = opts.hours_ahead
+        # Default 10 days (240 hours) for availability window
+        hours_ahead = opts.hours_ahead if opts.hours_ahead is not None else 240
         max_slots = opts.max_slots
-        # Fetch slots (urgency_hours=0 => start soon; we filter to hours_ahead)
-        raw_slots = get_free_slots(urgency_hours=0, max_slots=max(20, max_slots))
+        # When asking for a specific date, request enough slots to cover all days in the window
+        # so that filtering by opts.date finds slots on the requested day (e.g. Feb 20)
+        slots_to_request = max(20, max_slots) if not opts.date else min(80, SCHEDULING_WINDOW_DAYS * 9)
+        raw_slots = get_free_slots(urgency_hours=0, max_slots=max(slots_to_request, max_slots))
         now = datetime.now(timezone.utc)
-        cutoff = now + timedelta(hours=hours_ahead)
-        slots_in_window = [s for s in raw_slots if s.start <= cutoff][:max_slots]
+
+        if opts.date:
+            # Filter to slots on the given calendar day (YYYY-MM-DD)
+            try:
+                target = date.fromisoformat(opts.date)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="get_availability.date must be YYYY-MM-DD")
+            slots_in_window = [s for s in raw_slots if s.start.date() == target][:max_slots]
+        else:
+            cutoff = now + timedelta(hours=hours_ahead)
+            slots_in_window = [s for s in raw_slots if s.start <= cutoff][:max_slots]
+
+        def slot_to_json(s):
+            start_pacific = s.start.astimezone(PACIFIC) if s.start.tzinfo else s.start.replace(tzinfo=timezone.utc).astimezone(PACIFIC)
+            end_pacific = s.end.astimezone(PACIFIC) if s.end.tzinfo else s.end.replace(tzinfo=timezone.utc).astimezone(PACIFIC)
+            return {
+                "start": s.start.isoformat(),
+                "end": s.end.isoformat(),
+                "label": s.label,
+                "start_pst": start_pacific.strftime("%a %b %d at %I:%M %p Pacific"),
+                "end_pst": end_pacific.strftime("%a %b %d at %I:%M %p Pacific"),
+            }
         return AgentResponseAvailability(
-            slots=[
-                {
-                    "start": s.start.isoformat(),
-                    "end": s.end.isoformat(),
-                    "label": s.label,
-                }
-                for s in slots_in_window
-            ]
+            slots=[slot_to_json(s) for s in slots_in_window]
         ).model_dump(mode="json")
 
     if req.action == "alert":

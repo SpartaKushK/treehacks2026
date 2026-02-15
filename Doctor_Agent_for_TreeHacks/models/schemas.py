@@ -203,8 +203,9 @@ class PlatformTriageOutcome(BaseModel):
 
 class AgentRequestGetAvailability(BaseModel):
     """Payload when action is get_availability — query doctor's calendar only (no booking)."""
-    hours_ahead: int = 12
+    hours_ahead: Optional[int] = None  # default used when date is not set
     max_slots: int = 10
+    date: Optional[str] = None  # optional: "YYYY-MM-DD" for availability on a specific day (e.g. "2026-02-16")
 
 
 class AgentRequestAlert(BaseModel):
@@ -236,3 +237,13 @@ class AgentResponseAlert(BaseModel):
     action_taken: str
     message: str
     session_id: Optional[str] = None
+
+
+class BookingRequest(BaseModel):
+    """Payload for POST /booking — scheduler or secretary sends a confirmed slot to create on the doctor's calendar."""
+    start: str  # ISO datetime
+    end: str    # ISO datetime
+    patient_name: str
+    patient_email: str
+    title: str = Field(..., description="Appointment title / type")
+    description: Optional[str] = None

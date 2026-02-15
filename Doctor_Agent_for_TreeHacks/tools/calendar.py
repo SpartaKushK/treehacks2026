@@ -14,11 +14,16 @@ Supports two auth methods (no repeated sign-in):
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from models.schemas import TimeSlot
 import config
+
+# All user-facing times (labels, display) are in Pacific
+PACIFIC = ZoneInfo(config.DOCTOR_TIMEZONE)  # America/Los_Angeles
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +165,8 @@ def _real_free_slots(
         for b in busy_periods
     ]
 
-    # Generate candidate slots during working hours, skip busy ones
+    # Generate candidate slots during doctor's working hours (9am-5pm Pacific)
+    # Build times in Pacific so slots are 9am, 10am, ... 5pm local, not UTC
     slots: list[TimeSlot] = []
     day = time_min.date()
     end_date = time_max.date()
@@ -172,11 +178,17 @@ def _real_free_slots(
             continue
 
         for hour in range(config.DOCTOR_WORK_START_HOUR, config.DOCTOR_WORK_END_HOUR):
-            slot_start = datetime(
+            # Slot in doctor's timezone (Pacific), then convert to UTC for API/busy check
+            slot_start_pacific = datetime(
                 day.year, day.month, day.day, hour, 0,
-                tzinfo=timezone.utc,  # simplified; should use DOCTOR_TIMEZONE
+                tzinfo=PACIFIC,
             )
+            slot_start = slot_start_pacific.astimezone(timezone.utc)
             slot_end = slot_start + timedelta(minutes=duration_minutes)
+
+            # Only include slots that start at or after time_min (don't offer past slots)
+            if slot_start < time_min:
+                continue
 
             # Check if this slot overlaps any busy period
             overlaps = any(
@@ -186,7 +198,7 @@ def _real_free_slots(
                 slots.append(TimeSlot(
                     start=slot_start,
                     end=slot_end,
-                    label=slot_start.strftime("%A %B %d at %I:%M %p"),
+                    label=slot_start_pacific.strftime("%A %B %d at %I:%M %p Pacific"),
                 ))
                 if len(slots) >= max_slots:
                     break
@@ -201,22 +213,23 @@ def _mock_free_slots(
     duration_minutes: int,
     max_slots: int,
 ) -> list[TimeSlot]:
-    """Deterministic mock slots — used when Google Calendar is not configured."""
-    base = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    """Deterministic mock slots — used when Google Calendar is not configured. Uses 9am–5pm Pacific."""
+    now_pacific = datetime.now(PACIFIC).replace(minute=0, second=0, microsecond=0)
     start_offset = max(1, urgency_hours // 8)
     slots: list[TimeSlot] = []
 
     for day_offset in range(start_offset, start_offset + config.SCHEDULING_WINDOW_DAYS):
-        candidate = base + timedelta(days=day_offset)
-        if candidate.weekday() >= 5:
+        day = (now_pacific + timedelta(days=day_offset)).date()
+        if day.weekday() >= 5:
             continue
         for hour in [9, 11, 14, 16]:
-            slot_start = candidate.replace(hour=hour)
+            slot_start_pacific = datetime(day.year, day.month, day.day, hour, 0, tzinfo=PACIFIC)
+            slot_start = slot_start_pacific.astimezone(timezone.utc)
             slot_end = slot_start + timedelta(minutes=duration_minutes)
             slots.append(TimeSlot(
                 start=slot_start,
                 end=slot_end,
-                label=slot_start.strftime("%A %B %d at %I:%M %p"),
+                label=slot_start_pacific.strftime("%A %B %d at %I:%M %p Pacific"),
             ))
             if len(slots) >= max_slots:
                 return slots
@@ -247,8 +260,11 @@ def create_event(
         return "mock_event_id"
 
     try:
+        # On the doctor's calendar: show "Medical Appointment with Pari", not "Medical Appointment with Dr. Smith — Pari"
+        cleaned_type = re.sub(r"[\s—\-]+(with\s+)?Dr\.?\s*[\w\s]+$", "", appointment_type, flags=re.I).strip() or appointment_type
+        summary_for_doctor = f"{cleaned_type} with {patient_name}"
         event_body = {
-            "summary": f"{appointment_type} — {patient_name}",
+            "summary": summary_for_doctor,
             "description": (
                 f"Auto-scheduled by Doctor Agent.\n"
                 f"Patient: {patient_name} ({patient_email})\n"

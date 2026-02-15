@@ -35,6 +35,12 @@ export interface SchedulerInput {
   duration_mins?: number;
   method?: "in_person" | "telehealth";
   description?: string;
+  /** When set, this is a doctor/clinic appointment: use get_doctor_availability and send_booking_to_doctor. */
+  doctor_handle?: string | null;
+  /** User-requested date in YYYY-MM-DD; when set, fetch slots for that day and pick one on that date. */
+  preferred_date?: string | null;
+  /** User-requested time (e.g. "9am", "9:00 AM"); when set, pick a slot at that time (Pacific). */
+  preferred_time?: string | null;
 }
 
 export interface SchedulerResult {
@@ -70,17 +76,35 @@ const MAX_TURNS = 8;
 
 const SCHEDULER_SYSTEM_PROMPT = `You are a Scheduler Agent that manages calendar operations and appointment booking.
 
-You have three tools:
+You have five tools:
 1. **read_calendar** — View existing events on a user's calendar for a date range
 2. **check_availability** — Find free time slots during business hours (9am-6pm, weekdays)
 3. **book_appointment** — Book an event on the user's Google Calendar and local store
+4. **get_doctor_availability** — Get the doctor's free slots from the Doctor Agent (use when the user wants to schedule with the doctor or see when the doctor is available)
+5. **send_booking_to_doctor** — Send a confirmed appointment to the Doctor Agent so it is written on the doctor's calendar (use after the user confirms a doctor slot)
 
-## Workflow
-When asked to schedule an appointment:
+## Sending a message to the doctor
+When the user wants to schedule **with the doctor** or **at the clinic**, or asks when the doctor is available:
+1. Use **get_doctor_availability** to fetch the doctor's free slots from the Doctor Agent. The Doctor Agent manages the doctor's real calendar.
+2. Present those slots to the user (or pick the best one based on urgency).
+3. If the user confirms a slot (or you book one), use **send_booking_to_doctor** with the chosen start/end, patient name, and title so the appointment is created on the doctor's calendar.
+4. You can also use **book_appointment** to add the event to the patient's calendar so both sides have the appointment.
+
+Always use get_doctor_availability and send_booking_to_doctor when the request involves the doctor or the clinic — do not guess the doctor's schedule; the Doctor Agent is the source of truth.
+
+## Workflow (patient-only appointment)
+When asked to schedule an appointment on the user's calendar only:
 1. Use check_availability to find free slots based on urgency level
 2. Pick the best slot (earliest for urgent, most convenient for routine)
 3. Use book_appointment to create the event
 4. Report the outcome clearly with the booked date/time
+
+## Workflow (doctor / clinic appointment)
+When the user wants to see the doctor or schedule at the clinic:
+1. Use get_doctor_availability to get the doctor's free slots
+2. Pick or propose the best slot; if the user confirms (or context implies confirmation), use send_booking_to_doctor with that slot and the patient's details
+3. Optionally use book_appointment to add the same slot to the patient's calendar
+4. Confirm to the user that the appointment is on the doctor's calendar
 
 ## Urgency Guidelines
 - **urgent**: Search starting today. Book the first available slot.
@@ -89,6 +113,7 @@ When asked to schedule an appointment:
 
 ## Rules
 - Always use the tools — never fabricate calendar data.
+- For doctor/clinic requests, always go through the Doctor Agent (get_doctor_availability, send_booking_to_doctor).
 - If no slots found, try expanding the search window by a few days.
 - Confirm the booking details in your final response.
 - Business hours only: 9am-6pm, Monday-Friday.`;
@@ -96,6 +121,20 @@ When asked to schedule an appointment:
 /* ------------------------------------------------------------------ */
 /*  Tool definitions (composable, each wraps one google-calendar fn)   */
 /* ------------------------------------------------------------------ */
+
+const DOCTOR_AGENT_URL =
+  (typeof process !== "undefined" && process.env.DOCTOR_AGENT_URL) ||
+  "http://localhost:8000";
+
+/** Format an ISO date/time string for display in Pacific (PST/PDT). */
+function formatInPST(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("en-US", {
+    timeZone: "America/Los_Angeles",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
 
 function buildTools(humanId: string): ToolDef[] {
   return [
@@ -239,7 +278,7 @@ function buildTools(humanId: string): ToolDef[] {
             google_calendar: result.googleEventId
               ? { synced: true, event_id: result.googleEventId }
               : { synced: false, reason: "Google Calendar not connected — saved locally" },
-            message: `Booked: ${args.title} on ${new Date(args.start as string).toLocaleDateString()} at ${new Date(args.start as string).toLocaleTimeString()}.`,
+            message: `Booked: ${args.title} on ${formatInPST(args.start as string)} (Pacific).`,
           };
         } catch (e) {
           console.error("[SchedulerAgent] book_appointment error:", e);
@@ -247,6 +286,139 @@ function buildTools(humanId: string): ToolDef[] {
             error: true,
             scheduled: false,
             message: `Failed to book appointment: ${e instanceof Error ? e.message : String(e)}`,
+          };
+        }
+      },
+    },
+    {
+      name: "get_doctor_availability",
+      description:
+        "Get the doctor's available time slots from the Doctor Agent. Use this when the user wants to schedule with the doctor or see when the doctor is free. Returns slots from the doctor's real calendar.",
+      parameters: {
+        type: "object",
+        properties: {
+          hours_ahead: {
+            type: "number",
+            description: "How many hours ahead to search (default 240 = 10 days)",
+          },
+          max_slots: {
+            type: "number",
+            description: "Maximum number of slots to return (default 10)",
+          },
+          date: {
+            type: "string",
+            description: "Optional: YYYY-MM-DD to get slots on a specific day (use when the user asked for a specific date, e.g. Feb 20 -> 2026-02-20)",
+          },
+        },
+        required: [],
+      },
+      async execute(args) {
+        try {
+          const res = await fetch(`${DOCTOR_AGENT_URL}/agent`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "get_availability",
+              get_availability: {
+                hours_ahead: (args.hours_ahead as number) ?? 240,
+                max_slots: (args.max_slots as number) ?? 10,
+                date: (args.date as string) || undefined,
+              },
+            }),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            return {
+              error: true,
+              message: `Doctor Agent returned ${res.status}: ${text}`,
+            };
+          }
+          const data = (await res.json()) as { slots: Array<{ start: string; end: string; label?: string }> };
+          return {
+            error: false,
+            slots: data.slots ?? [],
+            count: (data.slots ?? []).length,
+            message:
+              (data.slots?.length ?? 0) > 0
+                ? `Found ${data.slots.length} available slot(s) on the doctor's calendar.`
+                : "No available slots on the doctor's calendar in the requested window.",
+          };
+        } catch (e) {
+          console.error("[SchedulerAgent] get_doctor_availability error:", e);
+          return {
+            error: true,
+            message: `Failed to reach Doctor Agent: ${e instanceof Error ? e.message : String(e)}`,
+          };
+        }
+      },
+    },
+    {
+      name: "send_booking_to_doctor",
+      description:
+        "Send a confirmed appointment to the Doctor Agent so it is written on the doctor's calendar. Use after the user (or you) have chosen a slot for a doctor appointment. Provide the slot start/end (ISO datetime), patient name, patient email, and title.",
+      parameters: {
+        type: "object",
+        properties: {
+          start: {
+            type: "string",
+            description: "ISO datetime — start of the appointment",
+          },
+          end: {
+            type: "string",
+            description: "ISO datetime — end of the appointment",
+          },
+          patient_name: {
+            type: "string",
+            description: "Patient's full name or handle",
+          },
+          patient_email: {
+            type: "string",
+            description: "Patient's email",
+          },
+          title: {
+            type: "string",
+            description: "Appointment title (e.g. 'Follow-up', 'Annual checkup')",
+          },
+          description: {
+            type: "string",
+            description: "Optional description for the calendar event",
+          },
+        },
+        required: ["start", "end", "patient_name", "patient_email", "title"],
+      },
+      async execute(args) {
+        try {
+          const res = await fetch(`${DOCTOR_AGENT_URL}/booking`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              start: args.start,
+              end: args.end,
+              patient_name: args.patient_name,
+              patient_email: args.patient_email,
+              title: args.title,
+              description: (args.description as string) || undefined,
+            }),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            return {
+              error: true,
+              message: `Doctor Agent booking returned ${res.status}: ${text}`,
+            };
+          }
+          const data = (await res.json()) as { ok?: boolean; calendar_event_id?: string; message?: string };
+          return {
+            error: false,
+            scheduled: true,
+            calendar_event_id: data.calendar_event_id,
+            message: data.message ?? "Appointment sent to the doctor's calendar.",
+          };
+        } catch (e) {
+          console.error("[SchedulerAgent] send_booking_to_doctor error:", e);
+          return {
+            error: true,
+            message: `Failed to send booking to Doctor Agent: ${e instanceof Error ? e.message : String(e)}`,
           };
         }
       },
@@ -273,6 +445,9 @@ export async function runSchedulerAgent(
     duration_mins: durationMins = 30,
     method,
     description,
+    doctor_handle: doctorHandle,
+    preferred_date: preferredDate,
+    preferred_time: preferredTime,
   } = input;
 
   // 1. Resolve user
@@ -305,7 +480,7 @@ export async function runSchedulerAgent(
     actor: "scheduler_agent",
     event: "SCHEDULER_START",
     ok: true,
-    data: { handle, urgency, durationMins, title },
+    data: { handle, urgency, durationMins, title, doctor_handle: doctorHandle ?? undefined },
   });
 
   // 2. Build tools scoped to this user's humanId
@@ -329,7 +504,25 @@ export async function runSchedulerAgent(
   const windowEnd = new Date(now);
   windowEnd.setDate(windowEnd.getDate() + dayOffset + 7);
 
-  const userMessage = `Schedule an appointment for user "${handle}":
+  const isDoctorAppointment = Boolean(doctorHandle);
+
+  const userMessage = isDoctorAppointment
+    ? `Schedule an appointment WITH THE DOCTOR for user "${handle}" (doctor: ${doctorHandle}).
+- Title: ${title}
+- Urgency: ${urgency} (target: ${dayGuidance})
+- Duration: ${durationMins} minutes
+- Method: ${effectiveMethod}
+${description ? `- Description: ${description}` : ""}
+${preferredDate ? `- USER REQUESTED DATE: ${preferredDate}. Call get_doctor_availability with date: "${preferredDate}" and pick a slot ON THIS DATE.` : ""}
+${preferredTime ? `- USER REQUESTED TIME: ${preferredTime} (Pacific). Pick a slot at this time when available (match the slot's start_pst/label); use that slot's exact start and end ISO strings — never substitute a different time.` : ""}
+
+IMPORTANT — This is a doctor/clinic appointment. You MUST:
+1. Call get_doctor_availability with hours_ahead: 240, max_slots: 10${preferredDate ? `, date: "${preferredDate}"` : ""} to get the doctor's REAL slots. Do NOT use check_availability for the doctor.
+2. ${preferredTime ? `Pick the slot that matches the requested time (${preferredTime}). ` : ""}${preferredDate && !preferredTime ? `Pick a slot on the requested date (${preferredDate}). ` : ""}Otherwise pick the best slot for this urgency. Always use the chosen slot's exact start and end ISO strings from the response when calling send_booking_to_doctor and book_appointment — never construct or substitute times (wrong timezone causes wrong calendar times).
+3. Call send_booking_to_doctor with that slot's start, end, patient_name="${handle}", patient_email="${handle}@patients.local", title="${title}". Then book_appointment on the patient's calendar with the SAME start and end strings.
+4. If no slots are available, say so. Do not invent slots.
+5. Report the booked time from the slot you chose (use the response start_pst/label for display).`
+    : `Schedule an appointment for user "${handle}":
 - Title: ${title}
 - Urgency: ${urgency} (target: ${dayGuidance})
 - Duration: ${durationMins} minutes
@@ -811,7 +1004,7 @@ async function runDeterministicFallback(
   });
 
   return {
-    finalDecision: `[Deterministic] Appointment booked: ${title} on ${new Date(chosenSlot.start).toLocaleDateString()} at ${new Date(chosenSlot.start).toLocaleTimeString()}.${booking.googleEventId ? " Synced to Google Calendar." : " Saved locally."}`,
+    finalDecision: `[Deterministic] Appointment booked: ${title} on ${formatInPST(chosenSlot.start)} (Pacific).${booking.googleEventId ? " Synced to Google Calendar." : " Saved locally."}`,
     turns: 1,
   };
 }
@@ -828,8 +1021,9 @@ function buildFallbackSummary(toolCallLog: ToolCallLogEntry[]): string {
     const r = tc.result;
     if (tc.tool === "book_appointment" && r.scheduled) {
       const booking = r.booking as Record<string, unknown> | undefined;
+      const start = booking?.start as string | undefined;
       parts.push(`  Booked: ${booking?.title || "appointment"}`);
-      parts.push(`  Time: ${booking?.start || "unknown"}`);
+      parts.push(`  Time: ${start ? formatInPST(start) + " (Pacific)" : "unknown"}`);
       parts.push(
         `  Google: ${r.googleEventId ? "synced" : "local only"}`,
       );

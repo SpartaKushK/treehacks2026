@@ -358,7 +358,8 @@ const sendHealthTrigger: ToolDefinition = {
 const checkDoctorAvailability: ToolDefinition = {
   name: "check_doctor_availability",
   description:
-    "Return free time slots on a doctor's calendar without booking. Use this when the user asks for doctor availability (e.g., next 12 hours) instead of immediately scheduling.",
+    "Return free time slots on the doctor's calendar from the Doctor Agent (real calendar). " +
+    "Use when the user asks for doctor availability. Pass date (YYYY-MM-DD) when they ask for a specific day (e.g. Feb 20).",
   parameters: {
     type: "object",
     properties: {
@@ -368,7 +369,11 @@ const checkDoctorAvailability: ToolDefinition = {
       },
       window_hours: {
         type: "number",
-        description: "How many hours ahead to search (default 12)",
+        description: "How many hours ahead to search (default 240 = 10 days)",
+      },
+      date: {
+        type: "string",
+        description: "Optional: YYYY-MM-DD to get slots only on this day (e.g. '2026-02-20' for Feb 20)",
       },
       duration_mins: {
         type: "number",
@@ -376,7 +381,7 @@ const checkDoctorAvailability: ToolDefinition = {
       },
       max_slots: {
         type: "number",
-        description: "Maximum number of slots to return (default 5)",
+        description: "Maximum number of slots to return (default 10)",
       },
     },
     required: ["doctor_handle"],
@@ -384,49 +389,77 @@ const checkDoctorAvailability: ToolDefinition = {
 
   async execute(args, ctx) {
     const handle = (args.doctor_handle as string) || "dr_smith";
-    const windowHours = (args.window_hours as number) || 12;
-    const durationMins = (args.duration_mins as number) || 30;
-    const maxSlots = (args.max_slots as number) || 5;
+    const windowHours = (args.window_hours as number) ?? 240; // 10 days default
+    const maxSlots = (args.max_slots as number) ?? 10;
+    const dateOnly = (args.date as string) || undefined;
 
-    const now = new Date();
-    const windowEnd = new Date(now.getTime() + windowHours * 60 * 60 * 1000);
+    const doctorAgentUrl =
+      (process.env.DOCTOR_AGENT_URL?.replace(/\/$/, "") || "http://localhost:8000") + "/agent";
 
-    const human = await prisma.human.findUnique({
-      where: { handle },
-      select: { id: true },
-    });
+    try {
+      const res = await fetch(doctorAgentUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "get_availability",
+          get_availability: {
+            hours_ahead: windowHours,
+            max_slots: maxSlots,
+            ...(dateOnly && { date: dateOnly }),
+          },
+        }),
+      });
 
-    if (!human) {
-      return { error: true, message: `Doctor handle '${handle}' not found.` };
+      if (!res.ok) {
+        const text = await res.text();
+        addStep(ctx.traceId, {
+          actor: "secretary",
+          event: "DOCTOR_AVAILABILITY_CHECK",
+          ok: false,
+          data: { handle, error: `${res.status}: ${text}` },
+        });
+        return {
+          error: true,
+          doctor_handle: handle,
+          message: `Doctor Agent returned ${res.status}: ${text}`,
+        };
+      }
+
+      const data = (await res.json()) as { slots: Array<{ start: string; end: string; label?: string }> };
+      const slots = data.slots ?? [];
+
+      addStep(ctx.traceId, {
+        actor: "secretary",
+        event: "DOCTOR_AVAILABILITY_CHECK",
+        ok: true,
+        data: { handle, window_hours: windowHours, slots: slots.length, source: "doctor_agent" },
+      });
+
+      return {
+        error: false,
+        doctor_handle: handle,
+        window_hours: windowHours,
+        ...(dateOnly && { date: dateOnly }),
+        available_slots: slots,
+        count: slots.length,
+        message:
+          slots.length > 0
+            ? `Found ${slots.length} available slots for ${handle}${dateOnly ? ` on ${dateOnly}` : ""} (Doctor Agent calendar).`
+            : `No available slots for ${handle}${dateOnly ? ` on ${dateOnly}` : ` in next ${windowHours} hours`} (Doctor Agent calendar).`,
+      };
+    } catch (e) {
+      addStep(ctx.traceId, {
+        actor: "secretary",
+        event: "DOCTOR_AVAILABILITY_CHECK",
+        ok: false,
+        data: { handle, error: String(e) },
+      });
+      return {
+        error: true,
+        doctor_handle: handle,
+        message: `Failed to reach Doctor Agent: ${e instanceof Error ? e.message : String(e)}`,
+      };
     }
-
-    const slots = await findAvailableSlots(
-      human.id,
-      now.toISOString(),
-      windowEnd.toISOString(),
-      durationMins,
-      maxSlots,
-    );
-
-    addStep(ctx.traceId, {
-      actor: "secretary",
-      event: "DOCTOR_AVAILABILITY_CHECK",
-      ok: true,
-      data: { handle, window_hours: windowHours, slots: slots.length },
-    });
-
-    return {
-      error: false,
-      doctor_handle: handle,
-      window_hours: windowHours,
-      duration_mins: durationMins,
-      available_slots: slots,
-      count: slots.length,
-      message:
-        slots.length > 0
-          ? `Found ${slots.length} available slots for ${handle} in next ${windowHours} hours.`
-          : `No available slots for ${handle} in next ${windowHours} hours.`,
-    };
   },
 };
 
@@ -622,6 +655,16 @@ const scheduleAppointment: ToolDefinition = {
         description:
           "Optional: doctor handle to mirror the booking on the doctor's calendar and notify the doctor agent",
       },
+      preferred_date: {
+        type: "string",
+        description:
+          "Optional: preferred date in YYYY-MM-DD when the user asked for a specific day (e.g. 'Feb 20' -> '2026-02-20')",
+      },
+      preferred_time: {
+        type: "string",
+        description:
+          "Optional: preferred time when the user asked for a specific time (e.g. '9am', '9:00 AM', '14:00'). Use 12h or 24h; will match Pacific slots.",
+      },
       doctor_callback_url: {
         type: "string",
         description:
@@ -651,7 +694,7 @@ const scheduleAppointment: ToolDefinition = {
     });
 
     try {
-      // Delegate to the SchedulerAgent sub-agent
+      // Delegate to the SchedulerAgent sub-agent (pass doctor_handle so it uses Doctor Agent for slots/booking)
       const schedulerResult = await runSchedulerAgent(
         {
           user_handle: handle,
@@ -660,6 +703,9 @@ const scheduleAppointment: ToolDefinition = {
           duration_mins: durationMins,
           method: method as "in_person" | "telehealth",
           description: args.description as string | undefined,
+          doctor_handle: doctorHandle ?? undefined,
+          preferred_date: (args.preferred_date as string) || undefined,
+          preferred_time: (args.preferred_time as string) || undefined,
         },
         {
           traceId: ctx.traceId,
@@ -708,7 +754,59 @@ const scheduleAppointment: ToolDefinition = {
             });
           }
         }
-        // Send callback to doctor agent if endpoint is known
+
+        // Write to the Python Doctor Agent's calendar (chimorty@gmail.com / service account)
+        const doctorAgentBase =
+          process.env.DOCTOR_AGENT_URL?.replace(/\/$/, "") || "http://localhost:8000";
+        const patientHuman = await prisma.human.findUnique({
+          where: { handle },
+          select: { displayName: true },
+        });
+        const patientName = patientHuman?.displayName ?? handle;
+        const patientEmail = `${handle}@patients.local`;
+        try {
+          const bookingRes = await fetch(`${doctorAgentBase}/booking`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              start: bookingCall.result.booking.start,
+              end: bookingCall.result.booking.end,
+              patient_name: patientName,
+              patient_email: patientEmail,
+              title: bookingCall.result.booking.title || (args.title as string) || "Medical Appointment",
+              description:
+                bookingCall.result.booking.description ||
+                (args.description as string) ||
+                `Scheduled via Secretary (patient: ${handle})`,
+            }),
+          });
+          if (bookingRes.ok) {
+            const data = (await bookingRes.json()) as { calendar_event_id?: string };
+            addStep(ctx.traceId, {
+              actor: "secretary",
+              event: "DOCTOR_AGENT_CALENDAR_BOOKED",
+              ok: true,
+              data: { doctor_handle: doctorHandle, calendar_event_id: data.calendar_event_id },
+            });
+          } else {
+            const text = await bookingRes.text();
+            addStep(ctx.traceId, {
+              actor: "secretary",
+              event: "DOCTOR_AGENT_CALENDAR_BOOKED",
+              ok: false,
+              data: { doctor_handle: doctorHandle, error: text },
+            });
+          }
+        } catch (e) {
+          addStep(ctx.traceId, {
+            actor: "secretary",
+            event: "DOCTOR_AGENT_CALENDAR_BOOKED",
+            ok: false,
+            data: { doctor_handle: doctorHandle, error: String(e) },
+          });
+        }
+
+        // Send callback to doctor agent if endpoint is known (for compatibility with alert pipeline)
         if (doctorCallback) {
           const payload = {
             proposal_id: "external-booking",
