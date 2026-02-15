@@ -38,7 +38,8 @@ model Human {
   policies      Policy[]
   calendar      CalendarEvent[]
   healthMetrics HealthMetric[]
-  anomalyAlerts AnomalyAlert[]
+  anomalyAlerts      AnomalyAlert[]
+  healthExtractions  HealthExtraction[]
 }
 
 model Capability {
@@ -123,7 +124,8 @@ model AgentConversation {
   userHandle String
   createdAt  DateTime       @default(now())
   updatedAt  DateTime       @updatedAt
-  messages   AgentMessage[]
+  messages           AgentMessage[]
+  healthExtractions  HealthExtraction[]
 
   @@unique([agentType, userHandle])
 }
@@ -136,4 +138,23 @@ model AgentMessage {
   metadataJson   String            @default("{}")
   createdAt      DateTime          @default(now())
   conversation   AgentConversation @relation(fields: [conversationId], references: [id])
+}
+
+model HealthExtraction {
+  id              String   @id @default(uuid())
+  humanId         String
+  conversationId  String
+  category        String   // sleep | symptoms | medication | vitals | mood | diet | exercise | doctor_visit | other
+  rawContent      String   // exact text from the conversation containing the health mention
+  summary         String   // LLM-generated concise summary
+  structuredData  String   @default("{}")  // JSON for numeric values e.g. {"systolic":140,"diastolic":90}
+  mentionedDate   String?  // ISO date of when the health event occurred, if stated
+  confidence      Float    // 0.0–1.0
+  extractedAt     DateTime @default(now())
+
+  human           Human             @relation(fields: [humanId], references: [id])
+  conversation    AgentConversation @relation(fields: [conversationId], references: [id])
+
+  @@index([humanId])
+  @@index([humanId, category])
 }

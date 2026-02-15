@@ -7,6 +7,7 @@ import {
   formatHistoryForLLM,
   addMessage,
 } from "@/lib/memory";
+import { observeHealthMentions } from "@/lib/health-observer";
 
 const SYSTEM_PROMPT = `You are a helpful personal AI assistant. You are friendly, concise, and helpful. You can help with a wide range of tasks including answering questions, brainstorming, writing, analysis, and more. Keep your responses clear and well-structured.`;
 
@@ -150,6 +151,18 @@ export async function POST(req: NextRequest) {
               content: fullText,
               metadata: { timestamp: new Date().toISOString() },
             });
+          }
+          // Fire-and-forget health extraction
+          if (user?.id) {
+            observeHealthMentions({
+              userMessage: message,
+              assistantResponse: fullText,
+              humanId: user.id,
+              conversationId: convoId,
+              currentDate: new Date().toISOString().split("T")[0],
+            }).catch((err) =>
+              console.warn("[chat] health observer error (swallowed):", err)
+            );
           }
         }
       },
