@@ -351,7 +351,14 @@ async function runOpenAILoop(
         toolCallLog.push({ tool: name, args, result });
         toolResultBlocks.push({ type: "tool_result", tool_use_id: tc.id, content: JSON.stringify(result) });
       }
+      // Append the "give me a summary" instruction into the same user message as the tool results
+      // (Anthropic doesn't allow consecutive user messages)
+      toolResultBlocks.push({
+        type: "text",
+        text: "Based on the tool results above, provide a concise final summary for the care team. Do not call any additional tools.",
+      });
       messages.push({ role: "user", content: toolResultBlocks });
+      requestFinalSummary = true;
     } else {
       // OpenAI format
       messages.push({
@@ -375,15 +382,15 @@ async function runOpenAILoop(
         toolCallLog.push({ tool: name, args, result });
         messages.push({ role: "tool", tool_call_id: id, content: JSON.stringify(result) });
       }
-    }
 
-    // Force a final text-only response next turn
-    messages.push({
-      role: "user",
-      content:
-        "Based on the tool results above, provide a concise final summary for the care team. Do not call any additional tools.",
-    });
-    requestFinalSummary = true;
+      // Force a final text-only response next turn
+      messages.push({
+        role: "user",
+        content:
+          "Based on the tool results above, provide a concise final summary for the care team. Do not call any additional tools.",
+      });
+      requestFinalSummary = true;
+    }
   }
 
   return {
