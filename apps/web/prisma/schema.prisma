@@ -158,3 +158,134 @@ model HealthExtraction {
   @@index([humanId])
   @@index([humanId, category])
 }
+
+// ── iOS HealthKit upload tables ─────────────────────────────────────
+
+model HealthUpload {
+  id         String   @id @default(uuid())
+  deviceId   String   @map("device_id")
+  exportDate DateTime @map("export_date")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  steps        Step[]
+  heartRates   HeartRate[]
+  sleepSamples SleepSample[]
+  activeEnergy ActiveEnergy[]
+  distances    Distance[]
+  workouts     Workout[]
+  weights      Weight[]
+  heights      Height[]
+  healthEvents HealthEvent[]
+
+  @@map("health_uploads")
+}
+
+model Step {
+  id        String  @id @default(uuid())
+  uploadId  String  @map("upload_id")
+  date      DateTime
+  stepCount Float   @map("step_count")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@map("steps")
+}
+
+model HeartRate {
+  id        String   @id @default(uuid())
+  uploadId  String   @map("upload_id")
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+  bpm       Float
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([startDate])
+  @@map("heart_rates")
+}
+
+model SleepSample {
+  id         String   @id @default(uuid())
+  uploadId   String   @map("upload_id")
+  startDate  DateTime @map("start_date")
+  endDate    DateTime @map("end_date")
+  sleepStage String   @map("sleep_stage")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([startDate])
+  @@map("sleep_samples")
+}
+
+model ActiveEnergy {
+  id           String   @id @default(uuid())
+  uploadId     String   @map("upload_id")
+  date         DateTime
+  kilocalories Float
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@map("active_energy")
+}
+
+model Distance {
+  id             String   @id @default(uuid())
+  uploadId       String   @map("upload_id")
+  date           DateTime
+  distanceMeters Float    @map("distance_meters")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@map("distances")
+}
+
+model Workout {
+  id                  String   @id @default(uuid())
+  uploadId            String   @map("upload_id")
+  startDate           DateTime @map("start_date")
+  endDate             DateTime @map("end_date")
+  activityType        String   @map("activity_type")
+  durationSeconds     Float    @map("duration_seconds")
+  totalEnergyKcal     Float?   @map("total_energy_kcal")
+  totalDistanceMeters Float?   @map("total_distance_meters")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@index([startDate])
+  @@map("workouts")
+}
+
+model Weight {
+  id       String   @id @default(uuid())
+  uploadId String   @map("upload_id")
+  date     DateTime
+  weightKg Float    @map("weight_kg")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@map("weights")
+}
+
+model Height {
+  id       String   @id @default(uuid())
+  uploadId String   @map("upload_id")
+  date     DateTime
+  heightCm Float    @map("height_cm")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@map("heights")
+}
+
+model HealthEvent {
+  id        String   @id @default(uuid())
+  uploadId  String   @map("upload_id")
+  eventType String   @map("event_type")
+  startDate DateTime @map("start_date")
+  endDate   DateTime @map("end_date")
+
+  upload HealthUpload @relation(fields: [uploadId], references: [id], onDelete: Cascade)
+
+  @@map("health_events")
+}

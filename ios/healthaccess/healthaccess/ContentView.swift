@@ -83,8 +83,16 @@ struct ContentView: View {
         uploadStatus = "Uploading..."
         let payload = manager.buildPayload()
         do {
-            try await APIService.uploadHealthData(payload)
-            uploadStatus = "Upload successful!"
+            let result = try await APIService.uploadHealthData(payload)
+            if let warning = result.warning {
+                uploadStatus = "Partial upload: \(warning)"
+            } else if let anomaly = result.anomaly,
+                      let score = anomaly.score, score > 0 {
+                let flags = anomaly.flags?.joined(separator: ", ") ?? "none"
+                uploadStatus = "Uploaded — anomaly score \(Int(score)), flags: \(flags)"
+            } else {
+                uploadStatus = "Upload successful!"
+            }
         } catch {
             uploadStatus = "Error: \(error.localizedDescription)"
         }

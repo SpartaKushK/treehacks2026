@@ -48,14 +48,39 @@ private struct UploadBody: Encodable {
     }
 }
 
+/// Response from the health-data upload endpoint
+struct UploadResponse: Decodable {
+    let uploadId: String?
+    let status: String?
+    let warning: String?
+    let anomaly: AnomalyResult?
+
+    struct AnomalyResult: Decodable {
+        let score: Double?
+        let flags: [String]?
+        let pipelineTriggered: Bool?
+        let traceId: String?
+        let urgency: String?
+    }
+}
+
 struct APIService {
-    // TODO: Replace with your deployed URL (e.g. https://your-app.vercel.app)
-    static var baseURL = "http://localhost:3001/api"
+    // ── Configuration ──────────────────────────────────────────────────
+    // For local dev:   "http://localhost:3000/api"
+    // For production:  "https://<your-vercel-app>.vercel.app/api"
+    #if DEBUG
+    static var baseURL = "http://localhost:3000/api"
+    #else
+    static var baseURL = "https://treehacks2026-nine.vercel.app/api"
+    #endif
 
     /// The agent handle to associate this device's data with
     static var userHandle = "pari"
 
-    static func uploadHealthData(_ payload: HealthDataPayload) async throws {
+    /// Upload a HealthKit payload to the server. Returns the parsed response
+    /// containing the upload ID and any anomaly results.
+    @discardableResult
+    static func uploadHealthData(_ payload: HealthDataPayload) async throws -> UploadResponse {
         guard let url = URL(string: baseURL)?.appendingPathComponent("health-data") else {
             throw APIError.invalidURL
         }
@@ -63,6 +88,7 @@ struct APIService {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30
 
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
@@ -76,9 +102,9 @@ struct APIService {
             throw APIError.encodingFailed
         }
 
-        let (_, response): (Data, URLResponse)
+        let (data, response): (Data, URLResponse)
         do {
-            (_, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await URLSession.shared.data(for: request)
         } catch {
             throw APIError.networkError(error)
         }
@@ -86,6 +112,14 @@ struct APIService {
         if let httpResponse = response as? HTTPURLResponse,
            !(200...299).contains(httpResponse.statusCode) {
             throw APIError.serverError(statusCode: httpResponse.statusCode)
+        }
+
+        let decoder = JSONDecoder()
+        do {
+            return try decoder.decode(UploadResponse.self, from: data)
+        } catch {
+            // If we can't parse the response but got 2xx, treat as success
+            return UploadResponse(uploadId: nil, status: "ok", warning: nil, anomaly: nil)
         }
     }
 }
