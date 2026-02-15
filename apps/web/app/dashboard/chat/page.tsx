@@ -190,6 +190,10 @@ export default function ChatPage() {
     }
   }
 
+  function handleVoiceTranscript(text: string) {
+    setInput((prev) => (prev ? prev + " " + text : text));
+  }
+
   async function handleClearHistory() {
     try {
       await fetch("/api/chat/clear", { method: "POST" });
