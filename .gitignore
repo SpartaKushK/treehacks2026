@@ -74,3 +74,6 @@ coverage/
 # Cache
 .cache/
 *.tsbuildinfo
+
+../../PATIENT_AGENT_INTEGRATION.md
+../../DEVPOST.md
