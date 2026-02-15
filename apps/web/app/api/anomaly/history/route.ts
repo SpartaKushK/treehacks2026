@@ -20,8 +20,10 @@ export async function GET(req: NextRequest) {
     where: { clerkUserId: userId },
     select: { id: true, heygenAvatarId: true },
   });
-  const agentIds = agents.map((a) => a.id);
-  const agentAvatarMap = new Map(agents.map((a) => [a.id, a.heygenAvatarId]));
+  const agentIds = agents.map((a: { id: string; heygenAvatarId: string | null }) => a.id);
+  const agentAvatarMap = new Map(
+    agents.map((a: { id: string; heygenAvatarId: string | null }) => [a.id, a.heygenAvatarId])
+  );
 
   if (agentIds.length === 0) {
     return NextResponse.json({ alerts: [], total: 0 });
@@ -44,10 +46,12 @@ export async function GET(req: NextRequest) {
     prisma.anomalyAlert.count({ where }),
   ]);
 
-  const alertsWithAvatar = alerts.map((a) => ({
-    ...a,
-    agentAvatarId: agentAvatarMap.get(a.humanId) || null,
-  }));
+  const alertsWithAvatar = alerts.map(
+    (a: { humanId: string; [k: string]: unknown }) => ({
+      ...a,
+      agentAvatarId: agentAvatarMap.get(a.humanId) || null,
+    })
+  );
 
   return NextResponse.json({ alerts: alertsWithAvatar, total, page, limit });
 }

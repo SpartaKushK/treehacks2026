@@ -1,4 +1,4 @@
-import { supabase } from "../supabase";
+import { getSupabase } from "../supabase";
 import { prisma } from "../store";
 import { ensureSeed } from "../ensureSeed";
 import { triggerAnomalyPipeline } from "./triggerPipeline";
@@ -164,7 +164,7 @@ async function computeBaseline(deviceId: string): Promise<Baseline> {
   const cutoff = twentyEightDaysAgo.toISOString();
 
   // Get all upload IDs for this device in the baseline window
-  const { data: uploads } = await supabase
+  const { data: uploads } = await getSupabase()
     .from("health_uploads")
     .select("id")
     .eq("device_id", deviceId)
@@ -187,9 +187,9 @@ async function computeBaseline(deviceId: string): Promise<Baseline> {
 
   // Fetch historical data in parallel
   const [stepsRes, hrRes, sleepRes] = await Promise.all([
-    supabase.from("steps").select("step_count").in("upload_id", uploadIds),
-    supabase.from("heart_rates").select("bpm").in("upload_id", uploadIds),
-    supabase.from("sleep_samples").select("start_date, end_date, sleep_stage").in("upload_id", uploadIds),
+    getSupabase().from("steps").select("step_count").in("upload_id", uploadIds),
+    getSupabase().from("heart_rates").select("bpm").in("upload_id", uploadIds),
+    getSupabase().from("sleep_samples").select("start_date, end_date, sleep_stage").in("upload_id", uploadIds),
   ]);
 
   // Steps baseline

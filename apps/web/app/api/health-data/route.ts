@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase";
+import { getSupabase } from "@/lib/supabase";
 import { processUpload } from "@/lib/anomaly/processUpload";
 
 // Shape matching iOS HealthDataPayload (dates arrive as ISO-8601 strings)
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
     const deviceId = body.deviceId ?? "unknown";
 
     // 1. Create upload record
-    const { data: upload, error: uploadErr } = await supabase
+    const { data: upload, error: uploadErr } = await getSupabase()
       .from("health_uploads")
       .insert({ device_id: deviceId, export_date: body.exportDate })
       .select("id")
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     // 2. Insert all health data in parallel
     const inserts = await Promise.allSettled([
       body.steps.length > 0
-        ? supabase.from("steps").insert(
+        ? getSupabase().from("steps").insert(
             body.steps.map((s) => ({
               upload_id: uploadId,
               date: s.date,
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.heartRates.length > 0
-        ? supabase.from("heart_rates").insert(
+        ? getSupabase().from("heart_rates").insert(
             body.heartRates.map((h) => ({
               upload_id: uploadId,
               start_date: h.startDate,
@@ -70,7 +70,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.sleepSamples.length > 0
-        ? supabase.from("sleep_samples").insert(
+        ? getSupabase().from("sleep_samples").insert(
             body.sleepSamples.map((s) => ({
               upload_id: uploadId,
               start_date: s.startDate,
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.activeEnergy.length > 0
-        ? supabase.from("active_energy").insert(
+        ? getSupabase().from("active_energy").insert(
             body.activeEnergy.map((a) => ({
               upload_id: uploadId,
               date: a.date,
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.distances.length > 0
-        ? supabase.from("distances").insert(
+        ? getSupabase().from("distances").insert(
             body.distances.map((d) => ({
               upload_id: uploadId,
               date: d.date,
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.workouts.length > 0
-        ? supabase.from("workouts").insert(
+        ? getSupabase().from("workouts").insert(
             body.workouts.map((w) => ({
               upload_id: uploadId,
               start_date: w.startDate,
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.weights.length > 0
-        ? supabase.from("weights").insert(
+        ? getSupabase().from("weights").insert(
             body.weights.map((w) => ({
               upload_id: uploadId,
               date: w.date,
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.heights.length > 0
-        ? supabase.from("heights").insert(
+        ? getSupabase().from("heights").insert(
             body.heights.map((h) => ({
               upload_id: uploadId,
               date: h.date,
@@ -135,7 +135,7 @@ export async function POST(req: NextRequest) {
         : Promise.resolve({ error: null }),
 
       body.healthEvents.length > 0
-        ? supabase.from("health_events").insert(
+        ? getSupabase().from("health_events").insert(
             body.healthEvents.map((e) => ({
               upload_id: uploadId,
               event_type: e.eventType,

@@ -16,7 +16,8 @@ export async function GET() {
     },
   });
 
-  const result = agents.map((agent) => {
+  type AgentWithMetrics = (typeof agents)[number];
+  const result = agents.map((agent: AgentWithMetrics) => {
     const latest = agent.healthMetrics[0] || null;
 
     // Simple anomaly score based on latest metrics

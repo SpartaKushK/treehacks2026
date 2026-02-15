@@ -58,8 +58,9 @@ async function handleSchedulePropose(
   });
 
   // Find free slots within the time window
+  type EventSlot = (typeof events)[number];
   const freeSlots = findFreeSlots(
-    events.map((e) => ({ start: e.startTs, end: e.endTs })),
+    events.map((e: EventSlot) => ({ start: e.startTs, end: e.endTs })),
     inp.timeWindow.start,
     inp.timeWindow.end,
     inp.durationMins
@@ -90,11 +91,12 @@ async function handleScheduleCounter(
   const events = await prisma.calendarEvent.findMany({
     where: { humanId: human.id },
   });
+  type EventSlot = (typeof events)[number];
 
   // Filter proposed slots against own calendar
   const acceptable = (inp.proposedSlots || []).filter((slot) => {
     return !events.some(
-      (e) =>
+      (e: EventSlot) =>
         new Date(slot.start) < new Date(e.endTs) &&
         new Date(slot.end) > new Date(e.startTs)
     );
@@ -115,7 +117,7 @@ async function handleScheduleCounter(
   if (!window) return { ok: true, data: { proposedSlots: [], message: "No slots available." } };
 
   const freeSlots = findFreeSlots(
-    events.map((e) => ({ start: e.startTs, end: e.endTs })),
+    events.map((e: EventSlot) => ({ start: e.startTs, end: e.endTs })),
     window.start,
     window.end,
     inp.durationMins || 30
@@ -170,13 +172,14 @@ async function handleHealthSummary(
     return { ok: false, data: { error: "no_health_data" } };
   }
 
+  type Metric = (typeof metrics)[number];
   const sleepAvg =
-    metrics.reduce((s, m) => s + m.sleepHours, 0) / metrics.length;
+    metrics.reduce((s: number, m: Metric) => s + m.sleepHours, 0) / metrics.length;
   const stepsAvg =
-    metrics.reduce((s, m) => s + m.steps, 0) / metrics.length;
-  const adherentDays = metrics.filter((m) => m.medAdherence).length;
+    metrics.reduce((s: number, m: Metric) => s + m.steps, 0) / metrics.length;
+  const adherentDays = metrics.filter((m: Metric) => m.medAdherence).length;
   const avgSymptom =
-    metrics.reduce((s, m) => s + m.symptomScore, 0) / metrics.length;
+    metrics.reduce((s: number, m: Metric) => s + m.symptomScore, 0) / metrics.length;
 
   // Trends: compare first half vs second half
   const half = Math.floor(metrics.length / 2);
@@ -184,9 +187,9 @@ async function handleHealthSummary(
   const older = metrics.slice(half);
 
   const recentSleepAvg =
-    recent.reduce((s, m) => s + m.sleepHours, 0) / recent.length;
+    recent.reduce((s: number, m: Metric) => s + m.sleepHours, 0) / recent.length;
   const olderSleepAvg =
-    older.reduce((s, m) => s + m.sleepHours, 0) / older.length;
+    older.reduce((s: number, m: Metric) => s + m.sleepHours, 0) / older.length;
   const sleepTrend =
     recentSleepAvg > olderSleepAvg + 0.3
       ? "up"
@@ -195,9 +198,9 @@ async function handleHealthSummary(
         : "flat";
 
   const recentStepsAvg =
-    recent.reduce((s, m) => s + m.steps, 0) / recent.length;
+    recent.reduce((s: number, m: Metric) => s + m.steps, 0) / recent.length;
   const olderStepsAvg =
-    older.reduce((s, m) => s + m.steps, 0) / older.length;
+    older.reduce((s: number, m: Metric) => s + m.steps, 0) / older.length;
   const activityTrend =
     recentStepsAvg > olderStepsAvg + 500
       ? "up"
@@ -208,14 +211,14 @@ async function handleHealthSummary(
   // Flags
   const sleepFlags: string[] = [];
   if (sleepAvg < 6) sleepFlags.push("Below recommended 7h average");
-  metrics.forEach((m) => {
+  metrics.forEach((m: Metric) => {
     if (m.sleepHours < 5)
       sleepFlags.push(`Very low sleep on ${m.date}: ${m.sleepHours}h`);
   });
 
   // Symptom spikes
   const spikes: string[] = [];
-  metrics.forEach((m) => {
+  metrics.forEach((m: Metric) => {
     if (m.symptomScore > 7) spikes.push(`Spike on ${m.date}: ${m.symptomScore}/10`);
   });
 

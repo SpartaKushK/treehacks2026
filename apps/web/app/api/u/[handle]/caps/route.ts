@@ -17,13 +17,15 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
+  type Cap = (typeof human.capabilities)[number];
+  type Pol = (typeof human.policies)[number];
   return NextResponse.json({
     handle: human.handle,
-    capabilities: human.capabilities.map((c) => ({
+    capabilities: human.capabilities.map((c: Cap) => ({
       name: c.name,
       description: c.description,
     })),
-    policies: human.policies.map((p) => ({
+    policies: human.policies.map((p: Pol) => ({
       capabilityName: p.capabilityName,
       requiredScopes: JSON.parse(p.requiredScopesJson),
       paymentRequired: p.paymentRequired,
