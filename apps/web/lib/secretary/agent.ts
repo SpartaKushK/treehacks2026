@@ -92,11 +92,14 @@ export async function runSecretary(
     ? `${triggerDescription}\n\nTrigger data:\n${JSON.stringify(triggerData, null, 2)}`
     : `New health trigger received:\n${JSON.stringify(triggerData, null, 2)}`;
 
-  // Prefer requested provider; if its key is missing, try the other LLM before giving up
+  // Prefer requested provider; if its key is missing, try the other LLM before giving up.
+  // The Claude Agent SDK spawns a subprocess (Claude Code CLI) which is not available
+  // in serverless environments like Vercel. Always use the OpenAI-style tool loop there.
   const claudeKey = process.env.ANTHROPIC_API_KEY;
   const openaiKey = process.env.OPENAI_API_KEY;
-  const useClaude = input.provider === "claude" ? !!claudeKey : !openaiKey && !!claudeKey;
-  const useOpenAI = !useClaude && !!openaiKey;
+  const isServerless = !!process.env.VERCEL || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
+  const useClaude = !isServerless && (input.provider === "claude" ? !!claudeKey : !openaiKey && !!claudeKey);
+  const useOpenAI = !useClaude && (!!openaiKey || !!claudeKey);
 
   if (!useClaude && !useOpenAI) {
     const fallback = deterministicFallback(userMessage);
@@ -216,18 +219,23 @@ async function runOpenAILoop(
   toolCallLog: ToolCallLogEntry[],
   triggerData: Record<string, unknown>,
 ): Promise<AgentLoopResult> {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = openaiKey || anthropicKey;
   if (!apiKey) {
     return {
-      finalDecision: "OpenAI API key not configured.",
+      finalDecision: "No LLM API key configured.",
       turns: 0,
     };
   }
 
+  // Use Anthropic API when no OpenAI key is available
+  const useAnthropic = !openaiKey && !!anthropicKey;
+
   const tools = toOpenAITools();
-  const ctx = { traceId, provider: "openai" as const, triggerData };
+  const ctx = { traceId, provider: (useAnthropic ? "claude" : "openai") as "openai" | "claude", triggerData };
   const messages: Array<Record<string, unknown>> = [
-    { role: "system", content: SECRETARY_SYSTEM_PROMPT },
+    ...(!useAnthropic ? [{ role: "system", content: SECRETARY_SYSTEM_PROMPT }] : []),
     { role: "user", content: userMessage },
   ];
   let turns = 0;
@@ -236,32 +244,85 @@ async function runOpenAILoop(
 
   while (turns < maxTurns) {
     turns++;
-    const body: Record<string, unknown> = {
-      model: "gpt-4o-mini",
-      messages,
-      max_tokens: 4096,
-    };
-    if (tools.length) {
-      body.tools = tools;
-      body.tool_choice = requestFinalSummary ? "none" : "auto";
-    }
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    const msg = data.choices?.[0]?.message;
-    if (!msg) {
-      const err = data.error?.message || JSON.stringify(data);
-      return {
-        finalDecision: toolCallLog.length > 0 ? buildFallbackSummary(toolCallLog) : `OpenAI error: ${err}`,
-        turns,
-      };
-    }
 
-    const content = typeof msg.content === "string" ? msg.content : msg.content?.[0]?.text ?? "";
-    const toolCalls = msg.tool_calls || [];
+    let content = "";
+    let toolCalls: Array<{ id: string; function: { name: string; arguments: string } }> = [];
+
+    if (useAnthropic) {
+      // ── Anthropic Messages API with tool use ──
+      const anthropicTools = tools.map((t: { function: { name: string; description: string; parameters: Record<string, unknown> } }) => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+      const anthropicBody: Record<string, unknown> = {
+        model: "claude-sonnet-4-5-20250929",
+        max_tokens: 4096,
+        system: SECRETARY_SYSTEM_PROMPT,
+        messages: messages.filter((m) => m.role !== "system"),
+      };
+      if (anthropicTools.length && !requestFinalSummary) {
+        anthropicBody.tools = anthropicTools;
+      }
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify(anthropicBody),
+      });
+      const data = await res.json();
+      if (data.error) {
+        const err = data.error?.message || JSON.stringify(data.error);
+        return {
+          finalDecision: toolCallLog.length > 0 ? buildFallbackSummary(toolCallLog) : `Anthropic error: ${err}`,
+          turns,
+        };
+      }
+      // Parse Anthropic response blocks
+      for (const block of (data.content || [])) {
+        if (block.type === "text") content += block.text;
+        if (block.type === "tool_use") {
+          toolCalls.push({
+            id: block.id,
+            function: { name: block.name, arguments: JSON.stringify(block.input || {}) },
+          });
+        }
+      }
+      // If stop_reason is "end_turn" with no tool calls, we're done
+      if (data.stop_reason === "end_turn" && toolCalls.length === 0) {
+        return { finalDecision: content || "Workflow complete.", turns };
+      }
+    } else {
+      // ── OpenAI Chat Completions API ──
+      const body: Record<string, unknown> = {
+        model: "gpt-4o-mini",
+        messages,
+        max_tokens: 4096,
+      };
+      if (tools.length) {
+        body.tools = tools;
+        body.tool_choice = requestFinalSummary ? "none" : "auto";
+      }
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      const msg = data.choices?.[0]?.message;
+      if (!msg) {
+        const err = data.error?.message || JSON.stringify(data);
+        return {
+          finalDecision: toolCallLog.length > 0 ? buildFallbackSummary(toolCallLog) : `OpenAI error: ${err}`,
+          turns,
+        };
+      }
+      content = typeof msg.content === "string" ? msg.content : msg.content?.[0]?.text ?? "";
+      toolCalls = msg.tool_calls || [];
+    }
 
     if (toolCalls.length === 0) {
       return {
@@ -270,42 +331,53 @@ async function runOpenAILoop(
       };
     }
 
-    messages.push({
-      role: "assistant",
-      content: content || null,
-      tool_calls: toolCalls.map((tc: { id: string; function: { name: string; arguments: string } }) => ({
-        id: tc.id,
-        type: "function",
-        function: { name: tc.function?.name || "", arguments: tc.function?.arguments || "{}" },
-      })),
-    });
-
-    for (const tc of toolCalls) {
-      const id = tc.id;
-      const name = tc.function?.name || "";
-      const argsStr = tc.function?.arguments || "{}";
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(argsStr);
-      } catch {
-        args = {};
+    if (useAnthropic) {
+      // Anthropic format: assistant content blocks + user message with tool_result blocks
+      const assistantBlocks: Record<string, unknown>[] = [];
+      if (content) assistantBlocks.push({ type: "text", text: content });
+      for (const tc of toolCalls) {
+        assistantBlocks.push({ type: "tool_use", id: tc.id, name: tc.function.name, input: JSON.parse(tc.function.arguments || "{}") });
       }
-      addStep(traceId, {
-        actor: "secretary",
-        event: "TOOL_CALL",
-        ok: true,
-        data: { tool: name, args },
-      });
-      const result = await executeTool(name, args, ctx);
-      toolCallLog.push({ tool: name, args, result });
+      messages.push({ role: "assistant", content: assistantBlocks });
+
+      const toolResultBlocks: Record<string, unknown>[] = [];
+      for (const tc of toolCalls) {
+        const name = tc.function?.name || "";
+        const argsStr = tc.function?.arguments || "{}";
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(argsStr); } catch { args = {}; }
+        addStep(traceId, { actor: "secretary", event: "TOOL_CALL", ok: true, data: { tool: name, args } });
+        const result = await executeTool(name, args, ctx);
+        toolCallLog.push({ tool: name, args, result });
+        toolResultBlocks.push({ type: "tool_result", tool_use_id: tc.id, content: JSON.stringify(result) });
+      }
+      messages.push({ role: "user", content: toolResultBlocks });
+    } else {
+      // OpenAI format
       messages.push({
-        role: "tool",
-        tool_call_id: id,
-        content: JSON.stringify(result),
+        role: "assistant",
+        content: content || null,
+        tool_calls: toolCalls.map((tc) => ({
+          id: tc.id,
+          type: "function",
+          function: { name: tc.function?.name || "", arguments: tc.function?.arguments || "{}" },
+        })),
       });
+
+      for (const tc of toolCalls) {
+        const id = tc.id;
+        const name = tc.function?.name || "";
+        const argsStr = tc.function?.arguments || "{}";
+        let args: Record<string, unknown> = {};
+        try { args = JSON.parse(argsStr); } catch { args = {}; }
+        addStep(traceId, { actor: "secretary", event: "TOOL_CALL", ok: true, data: { tool: name, args } });
+        const result = await executeTool(name, args, ctx);
+        toolCallLog.push({ tool: name, args, result });
+        messages.push({ role: "tool", tool_call_id: id, content: JSON.stringify(result) });
+      }
     }
 
-    // Force a final text-only response next turn (tool_choice: "none" set above on next iteration)
+    // Force a final text-only response next turn
     messages.push({
       role: "user",
       content:

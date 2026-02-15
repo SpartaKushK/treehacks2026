@@ -70,7 +70,7 @@ struct APIService {
     static var baseURL = "https://treehacks2026-nine.vercel.app/api"
 
     /// The agent handle to associate this device's data with
-    static var userHandle = "healthcarea"
+    static var userHandle = "pari"
 
     /// Send a synthetic "bad" health payload to trigger the anomaly pipeline (demo only).
     @discardableResult

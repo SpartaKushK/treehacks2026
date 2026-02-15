@@ -68,7 +68,7 @@ struct DemoAlertResponse: Decodable {
 
 enum DemoAlertService {
     static let baseURL = "https://treehacks2026-nine.vercel.app/api"
-    static let userHandle = "healthcarea"
+    static let userHandle = "pari"
 
     static func triggerAlert() async throws -> DemoAlertResponse {
         guard let url = URL(string: baseURL)?.appendingPathComponent("health-data") else {
