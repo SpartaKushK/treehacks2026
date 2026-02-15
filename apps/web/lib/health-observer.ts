@@ -134,7 +134,7 @@ ${input.assistantResponse}`;
   if (valid.length === 0) return;
 
   await prisma.healthExtraction.createMany({
-    data: valid.map((e) => ({
+    data: valid.map((e: Extraction) => ({
       humanId: input.humanId,
       conversationId: input.conversationId,
       category: e.category,
