@@ -206,10 +206,9 @@ def create_event(
                 "dateTime": slot.end.isoformat(),
                 "timeZone": config.DOCTOR_TIMEZONE,
             },
-            "attendees": [
-                {"email": config.DOCTOR_EMAIL},
-                {"email": patient_email},
-            ],
+            # Note: attendees are omitted because service accounts on personal
+            # Gmail cannot invite attendees without Domain-Wide Delegation.
+            # The patient info is in the description instead.
             "reminders": {
                 "useDefault": False,
                 "overrides": [

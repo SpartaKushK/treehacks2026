@@ -33,6 +33,10 @@ interface AgentConfig {
   googleCalendarTokens: string | null;
   heygenAvatarId: string | null;
   avatarPhotoUrl: string | null;
+  agentType: string;
+  specialty: string | null;
+  clinicName: string | null;
+  doctorCalendarEmail: string | null;
   capabilities: Capability[];
   policies: Policy[];
 }
@@ -90,6 +94,12 @@ export default function AgentConfigPage() {
   const [soonThreshold, setSoonThreshold] = useState(70);
   const [enabledCaps, setEnabledCaps] = useState<Set<string>>(new Set());
 
+  // Doctor-specific fields
+  const [agentType, setAgentType] = useState<"patient" | "doctor">("patient");
+  const [specialty, setSpecialty] = useState("");
+  const [clinicName, setClinicName] = useState("");
+  const [doctorCalendarEmail, setDoctorCalendarEmail] = useState("");
+
   // Avatar
   const [avatars, setAvatars] = useState<HeyGenAvatar[]>([]);
   const [avatarsLoaded, setAvatarsLoaded] = useState(false);
@@ -133,6 +143,7 @@ export default function AgentConfigPage() {
           endpointUrl: data.endpointUrl || `agent://${handle}`,
           llmProvider: data.llmProvider || "claude",
           anomalyThresholdJson: data.anomalyThresholdJson || "{}",
+          agentType: data.agentType || "patient",
           capabilities: data.capabilities || [],
           policies: data.policies || [],
         };
@@ -145,6 +156,10 @@ export default function AgentConfigPage() {
         setEnabledCaps(new Set(safeData.capabilities.map((c: Capability) => c.name)));
         setSelectedAvatarId(safeData.heygenAvatarId || null);
         setSelectedAvatarPhoto(safeData.avatarPhotoUrl || null);
+        setAgentType((safeData.agentType as "patient" | "doctor") || "patient");
+        setSpecialty(data.specialty || "");
+        setClinicName(data.clinicName || "");
+        setDoctorCalendarEmail(data.doctorCalendarEmail || "");
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -207,6 +222,10 @@ export default function AgentConfigPage() {
         llmProvider: provider,
         personaPrompt: persona || null,
         anomalyThresholds: { urgent: urgentThreshold, soon: soonThreshold },
+        agentType,
+        specialty: agentType === "doctor" ? specialty : null,
+        clinicName: agentType === "doctor" ? clinicName : null,
+        doctorCalendarEmail: agentType === "doctor" ? doctorCalendarEmail : null,
         capabilities: ALL_CAPABILITIES
           .filter((c) => enabledCaps.has(c.name))
           .map((c) => ({ name: c.name, description: c.description })),
@@ -394,6 +413,9 @@ export default function AgentConfigPage() {
                     : "Canonical AI agent endpoint — negotiates, transacts, and coordinates on your behalf."}
                 </div>
                 <div className="agent-meta-row">
+                  <span className={`badge ${config.agentType === "doctor" ? "badge-red" : "badge-blue"}`}>
+                    {config.agentType === "doctor" ? "Doctor" : "Patient"}
+                  </span>
                   <span className="badge badge-purple">{config.llmProvider}</span>
                   <span className="badge badge-blue">{config.capabilities.length} capabilities</span>
                   {config.googleCalendarTokens && <span className="badge badge-green">Calendar</span>}
@@ -856,6 +878,59 @@ export default function AgentConfigPage() {
                     style={{ width: "100%", accentColor: "var(--yellow)" }} />
                 </div>
               </div>
+            </div>
+
+            {/* Agent Type */}
+            <div className="card">
+              <h2 style={{ fontSize: "1rem", marginBottom: "0.75rem" }}>Agent Type</h2>
+              <div style={{ display: "flex", gap: "0.5rem", marginBottom: "1rem" }}>
+                <button
+                  className={`btn ${agentType === "patient" ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setAgentType("patient")}
+                  style={{ flex: 1 }}
+                >
+                  Patient
+                </button>
+                <button
+                  className={`btn ${agentType === "doctor" ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setAgentType("doctor")}
+                  style={{ flex: 1 }}
+                >
+                  Doctor
+                </button>
+              </div>
+              {agentType === "doctor" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                  <div className="field">
+                    <label>Specialty</label>
+                    <input
+                      placeholder="e.g. Internal Medicine, Cardiology..."
+                      value={specialty}
+                      onChange={(e) => setSpecialty(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Clinic Name</label>
+                    <input
+                      placeholder="e.g. TreeHacks Health Clinic"
+                      value={clinicName}
+                      onChange={(e) => setClinicName(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label>Doctor Calendar Email</label>
+                    <input
+                      type="email"
+                      placeholder="doctor@gmail.com (for service account calendar access)"
+                      value={doctorCalendarEmail}
+                      onChange={(e) => setDoctorCalendarEmail(e.target.value)}
+                    />
+                    <div style={{ fontSize: "0.7rem", color: "var(--text-dim)", marginTop: "0.25rem" }}>
+                      The Google account email whose calendar the Doctor Agent writes to via service account.
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Google Calendar */}

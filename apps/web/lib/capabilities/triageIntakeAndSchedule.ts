@@ -7,6 +7,7 @@ import {
 import { generateTriageOutcome } from "../triage/deterministic";
 import { buildDoctorReceptionistPrompt } from "../personas/doctorReceptionist";
 import { addStep } from "../trace";
+import { prisma } from "../store";
 
 /**
  * Triage handler — strictly evaluates urgency/severity, performs intake,
@@ -80,6 +81,53 @@ export async function handleTriageIntakeAndSchedule(
   // Attach source tag so the caller can verify which backend handled triage
   (outcome as Record<string, unknown>)._triage_source = triageSource;
 
+  // ── Persist CalendarEvent + Booking if the Doctor Agent created a Google event ──
+  if (outcome.calendar_event_id && outcome.booking_confirmation?.start) {
+    try {
+      // Find the doctor agent to link the calendar event
+      const doctorAgent = await prisma.human.findFirst({
+        where: { agentType: "doctor" },
+      });
+
+      if (doctorAgent) {
+        await prisma.calendarEvent.create({
+          data: {
+            humanId: doctorAgent.id,
+            startTs: outcome.booking_confirmation.start,
+            endTs: outcome.booking_confirmation.end,
+            title: `Triage: ${req.patient_handle} (${outcome.urgency})`,
+            googleEventId: outcome.calendar_event_id,
+            source: "google",
+          },
+        });
+
+        await prisma.booking.create({
+          data: {
+            fromHandle: req.patient_handle,
+            toHandle: doctorAgent.handle,
+            startTs: outcome.booking_confirmation.start,
+            endTs: outcome.booking_confirmation.end,
+            title: `${outcome.booking_confirmation.method === "in_person" ? "In-Person" : "Telehealth"} — ${req.patient_handle}`,
+          },
+        });
+
+        addStep(traceId, {
+          actor: "dr_smith",
+          event: "CALENDAR_EVENT_CREATED",
+          ok: true,
+          data: {
+            calendar_event_id: outcome.calendar_event_id,
+            start: outcome.booking_confirmation.start,
+            end: outcome.booking_confirmation.end,
+            method: outcome.booking_confirmation.method,
+          },
+        });
+      }
+    } catch (err) {
+      console.error("Failed to persist calendar event locally:", err);
+    }
+  }
+
   // Log intake steps
   addStep(traceId, {
     actor: "dr_smith",
@@ -123,7 +171,7 @@ async function callDoctorAgent(
   baseUrl: string
 ): Promise<TriageOutcome> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), 60_000);
 
   try {
     const res = await fetch(`${baseUrl}/triage/platform`, {

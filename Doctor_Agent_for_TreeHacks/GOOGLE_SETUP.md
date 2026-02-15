@@ -178,13 +178,82 @@ You should see the triage agent run and print severity/appointment type.
 
 ---
 
+## Part 7 — Next.js Web App (OAuth for Dashboard Calendar)
+
+The Next.js dashboard has a "Connect Google Calendar" button that lets
+the doctor view/sync their calendar in the web UI. This uses OAuth 2.0
+(separate from the service account).
+
+### 7a. Create OAuth 2.0 credentials for the web app
+
+1. In GCP Console -> **APIs & Services** -> **Credentials**
+2. Click **+ Create Credentials** -> **OAuth client ID**
+3. Application type: **Web application**
+4. Name: `people-api-web`
+5. Authorized redirect URIs: add `http://localhost:3000/api/google/callback`
+6. Click **Create**
+7. Copy the **Client ID** and **Client Secret**
+
+### 7b. Update `apps/web/.env.local`
+
+```
+GOOGLE_CLIENT_ID=<your-client-id>.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=GOCSPX-<your-secret>
+GOOGLE_REDIRECT_URI=http://localhost:3000/api/google/callback
+```
+
+### 7c. Test
+
+1. Start the Next.js dev server: `cd apps/web && pnpm dev`
+2. Navigate to your agent config page: `http://localhost:3000/dashboard/agents/<handle>`
+3. Expand Settings -> click **Connect Google Calendar**
+4. Log in with the doctor's Google account, authorize
+5. You should be redirected back with `?calendar=connected`
+
+---
+
+## Quick Start for Your New Doctor Google Account
+
+Your service account email is:
+```
+doctor-agent-server@treehacks2026.iam.gserviceaccount.com
+```
+
+Steps to get calendar events appearing:
+
+1. **Enable Google Calendar API** (if not already):
+   - Go to https://console.cloud.google.com/apis/library/calendar-json.googleapis.com
+   - Select project `treehacks2026` -> **Enable**
+
+2. **Share the doctor's calendar with the service account**:
+   - Log into Google Calendar as the new doctor account
+   - Settings gear -> Settings -> left sidebar -> your calendar
+   - "Share with specific people or groups" -> **+ Add people and groups**
+   - Enter: `doctor-agent-server@treehacks2026.iam.gserviceaccount.com`
+   - Permission: **Make changes to events** -> **Send**
+
+3. **Update `Doctor_Agent_for_TreeHacks/.env`**:
+   ```
+   DOCTOR_EMAIL=<new-doctor-email>@gmail.com
+   DOCTOR_CALENDAR_ID=<new-doctor-email>@gmail.com
+   ```
+
+4. **Restart the Doctor Agent**: `python run.py`
+
+5. **Test**: Run the demo pipeline — the triage should now create a real
+   Google Calendar event on the doctor's calendar instead of a mock event.
+
+---
+
 ## For the Hackathon Demo
 
-If you don't have time to wire up full OAuth, the scheduler is currently
-running with **mock calendar data** that still demonstrates the full
-agent-to-agent negotiation protocol. You can demo the real triage + 
-scheduling logic without live calendar access, then mention in your 
-presentation that production would use real Google Calendar.
+With the service account set up, the full pipeline works end-to-end:
+1. Anomaly detected -> Patient agent analyzes
+2. Doctor Agent triages via Claude + LangGraph
+3. Doctor Agent checks real calendar for free slots
+4. Doctor Agent creates a Google Calendar event
+5. Event shows up on the doctor's actual calendar
 
-The Google Calendar API integration lives in `tools/calendar.py` (stub file).
-Wire it up by calling `get_free_slots()` with the service account credentials.
+The `_triage_source` field in the API response confirms the Python Doctor
+Agent handled the triage. The `calendar_event_id` field confirms a real
+Google Calendar event was created.

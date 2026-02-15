@@ -196,3 +196,4 @@ class PlatformTriageOutcome(BaseModel):
     proposed_slots: List[dict]  # [{start: str, end: str}]
     booking_confirmation: dict   # {start: str, end: str, method: "telehealth"|"in_person"}
     escalation_triggered: bool
+    calendar_event_id: Optional[str] = None  # Google Calendar event ID if created

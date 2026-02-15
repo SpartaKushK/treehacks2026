@@ -51,6 +51,11 @@ export async function PUT(
     updateData.heygenAvatarId = body.heygenAvatarId;
     updateData.avatarPhotoUrl = body.avatarPhotoUrl || null;
   }
+  // Doctor-specific fields
+  if (body.agentType !== undefined) updateData.agentType = body.agentType;
+  if (body.specialty !== undefined) updateData.specialty = body.specialty || null;
+  if (body.clinicName !== undefined) updateData.clinicName = body.clinicName || null;
+  if (body.doctorCalendarEmail !== undefined) updateData.doctorCalendarEmail = body.doctorCalendarEmail || null;
 
   if (Object.keys(updateData).length > 0) {
     await prisma.human.update({

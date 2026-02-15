@@ -24,6 +24,7 @@ export const TriageOutcomeSchema = z.object({
     method: z.enum(["telehealth", "in_person"]),
   }),
   escalation_triggered: z.boolean(),
+  calendar_event_id: z.string().nullish(),  // Google Calendar event ID from Doctor Agent
 });
 
 export type TriageOutcome = z.infer<typeof TriageOutcomeSchema>;

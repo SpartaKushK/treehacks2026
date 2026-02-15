@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   // Exchange code for tokens
   const clientId = process.env.GOOGLE_CLIENT_ID || "";
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3001/api/google/callback";
+  const redirectUri = process.env.GOOGLE_REDIRECT_URI || "http://localhost:3000/api/google/callback";
 
   const tokenRes = await fetch(GOOGLE_TOKEN_URL, {
     method: "POST",

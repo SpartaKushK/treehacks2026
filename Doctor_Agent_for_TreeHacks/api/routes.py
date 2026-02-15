@@ -18,7 +18,7 @@ from models.schemas import (
     PlatformTriageRequest, PlatformTriageOutcome, AlertType,
 )
 from agents.triage import run_triage
-from tools.calendar import get_free_slots
+from tools.calendar import get_free_slots, create_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -278,6 +278,27 @@ async def platform_triage(req: PlatformTriageRequest):
     chosen_slot = slots[0] if slots else None
     method = "in_person" if req.urgency == "urgent" else "telehealth"
 
+    # ── Create Google Calendar event for the booked slot ──────────────
+    calendar_event_id = None
+    if chosen_slot:
+        try:
+            calendar_event_id = create_event(
+                slot=chosen_slot,
+                patient_name=req.patient_handle,
+                patient_email=f"{req.patient_handle}@people-api.local",
+                appointment_type=f"{method} — {triage_result.appointment_type}",
+                description=(
+                    f"Auto-scheduled by Doctor Agent.\n"
+                    f"Triage severity: {triage_result.severity.value}\n"
+                    f"Urgency: {req.urgency}\n"
+                    f"Anomaly score: {req.anomaly.anomaly_score}\n"
+                    f"Flags: {', '.join(req.anomaly.flags)}"
+                ),
+            )
+            logger.info(f"Calendar event created: {calendar_event_id}")
+        except Exception as e:
+            logger.error(f"Failed to create calendar event: {e}")
+
     return PlatformTriageOutcome(
         intake_questions_asked=questions,
         intake_answers=answers,
@@ -292,4 +313,5 @@ async def platform_triage(req: PlatformTriageRequest):
             "method": method,
         },
         escalation_triggered=triage_result.should_escalate,
+        calendar_event_id=calendar_event_id,
     )
